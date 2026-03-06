@@ -1,0 +1,1242 @@
+import "server-only"
+
+import type {
+  AdminDashboardData,
+  AdminUserItem,
+  AppSettings,
+  CitizenDashboardData,
+  CitizenNetworkSector,
+  CitizenQualityData,
+  MapData,
+  MapNode,
+  MaintenanceTask,
+  OperatorAlert,
+  OperatorDashboardData,
+  SensorItem,
+  SimulationItem,
+  UserRole,
+} from "@/lib/types"
+import { getDb } from "@/lib/server/db"
+import { formatRelativeTime, hourLabel, toDisplayDate, weekDayLabel } from "@/lib/server/time"
+
+interface UserRow {
+  id: number
+  name: string
+  email: string
+  role: UserRole
+  passwordHash: string
+  isActive: number
+  createdAt: string
+  lastLoginAt: string | null
+}
+
+interface LatestMetricRow {
+  metric: string
+  value: number
+  unit: string
+  recordedAt: string
+}
+
+function toFixedString(value: number, digits = 1): string {
+  return Number.isFinite(value) ? value.toFixed(digits) : "0"
+}
+
+function roleToLabel(role: UserRole): "Citoyen" | "Operateur" | "Administrateur" {
+  if (role === "admin") {
+    return "Administrateur"
+  }
+
+  if (role === "operateur") {
+    return "Operateur"
+  }
+
+  return "Citoyen"
+}
+
+function initialsFromName(name: string): string {
+  const tokens = name
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean)
+
+  if (tokens.length === 0) {
+    return "NA"
+  }
+
+  if (tokens.length === 1) {
+    return tokens[0].slice(0, 2).toUpperCase()
+  }
+
+  return `${tokens[0][0] ?? ""}${tokens[1][0] ?? ""}`.toUpperCase()
+}
+
+async function getLatestMetrics(): Promise<Record<string, LatestMetricRow>> {
+  const db = await getDb()
+
+  const rows = db
+    .prepare(
+      `SELECT metric, value, unit, recorded_at as recordedAt
+       FROM quality_readings
+       WHERE id IN (
+         SELECT MAX(id)
+         FROM quality_readings
+         GROUP BY metric
+       )`,
+    )
+    .all() as unknown as LatestMetricRow[]
+
+  return rows.reduce<Record<string, LatestMetricRow>>((accumulator, row) => {
+    accumulator[row.metric] = row
+    return accumulator
+  }, {})
+}
+
+export async function findUserByEmail(email: string): Promise<UserRow | null> {
+  const db = await getDb()
+  const row = db
+    .prepare(
+      `SELECT id,
+              name,
+              email,
+              role,
+              password_hash as passwordHash,
+              is_active as isActive,
+              created_at as createdAt,
+              last_login_at as lastLoginAt
+       FROM users
+       WHERE email = ?
+       LIMIT 1`,
+    )
+    .get(email.toLowerCase()) as UserRow | undefined
+
+  return row ?? null
+}
+
+export async function createUser(input: {
+  name: string
+  email: string
+  role: UserRole
+  passwordHash: string
+}): Promise<{ id: number; name: string; email: string; role: UserRole }> {
+  const db = await getDb()
+
+  const result = db
+    .prepare(
+      `INSERT INTO users (name, email, password_hash, role, is_active, created_at)
+       VALUES (?, ?, ?, ?, 1, ?)`,
+    )
+    .run(input.name.trim(), input.email.trim().toLowerCase(), input.passwordHash, input.role, new Date().toISOString())
+
+  return {
+    id: Number(result.lastInsertRowid),
+    name: input.name.trim(),
+    email: input.email.trim().toLowerCase(),
+    role: input.role,
+  }
+}
+
+export async function getCitizenDashboardData(): Promise<CitizenDashboardData> {
+  const db = await getDb()
+
+  const networkHealthRow = db.prepare("SELECT ROUND(AVG(health), 1) as value FROM sectors").get() as { value: number }
+  const pressureRow = db.prepare("SELECT ROUND(AVG(pressure), 2) as value FROM sectors").get() as { value: number }
+  const totalSensorsRow = db.prepare("SELECT COUNT(*) as value FROM sensors").get() as { value: number }
+  const activeSensorsRow = db.prepare("SELECT COUNT(*) as value FROM sensors WHERE status <> 'inactif'").get() as { value: number }
+  const activeAlertsRow = db
+    .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte')")
+    .get() as { value: number }
+
+  const recentAlertsRows = db
+    .prepare(
+      `SELECT id, type, location, severity, created_at as createdAt
+       FROM alerts
+       ORDER BY datetime(created_at) DESC
+       LIMIT 5`,
+    )
+    .all() as Array<{
+    id: string
+    type: string
+    location: string
+    severity: "critique" | "alerte" | "moyen" | "faible"
+    createdAt: string
+  }>
+
+  const metrics = await getLatestMetrics()
+  const latestPh = metrics.ph?.value ?? 7.2
+  const latestTurbidity = metrics.turbidity?.value ?? 0.8
+  const latestChlorine = metrics.chlorine?.value ?? 0.5
+  const latestTemperature = metrics.temperature?.value ?? 18.5
+
+  const networkHealth = Math.round(networkHealthRow.value ?? 0)
+  const pressureRate = Math.round(Math.min(100, ((pressureRow.value ?? 3) / 3.5) * 100))
+  const activeSensorsRate = totalSensorsRow.value > 0 ? Math.round((activeSensorsRow.value / totalSensorsRow.value) * 100) : 0
+
+  return {
+    qualityScore: Math.round(Math.max(0, 100 - latestTurbidity * 12 - Math.abs(latestPh - 7.2) * 8)),
+    temperature: Number(toFixedString(latestTemperature, 1)),
+    networkState: activeAlertsRow.value > 4 ? "Sous surveillance" : "Normal",
+    activeAlerts: activeAlertsRow.value,
+    networkHealth,
+    activeSensorsRate,
+    pressureRate,
+    waterQualityIndicators: [
+      { label: "pH", value: toFixedString(latestPh, 1), status: "normal", target: "6.5 - 8.5" },
+      {
+        label: "Turbidite",
+        value: `${toFixedString(latestTurbidity, 1)} NTU`,
+        status: latestTurbidity > 1 ? "alerte" : "normal",
+        target: "< 1 NTU",
+      },
+      {
+        label: "Chlore residuel",
+        value: `${toFixedString(latestChlorine, 2)} mg/L`,
+        status: latestChlorine < 0.2 || latestChlorine > 0.8 ? "alerte" : "normal",
+        target: "0.2 - 0.8 mg/L",
+      },
+      {
+        label: "Contamination",
+        value: `${toFixedString(metrics.coliform?.value ?? 0, 0)} CFU`,
+        status: (metrics.coliform?.value ?? 0) > 0 ? "critique" : "normal",
+        target: "0 CFU/100mL",
+      },
+    ],
+    recentAlerts: recentAlertsRows.map((alert) => ({
+      id: alert.id,
+      message: `${alert.type} - ${alert.location}`,
+      time: formatRelativeTime(alert.createdAt),
+      type: alert.severity === "critique" ? "critique" : alert.severity === "alerte" ? "alerte" : "normal",
+    })),
+  }
+}
+
+export async function getCitizenNetworkData(): Promise<CitizenNetworkSector[]> {
+  const db = await getDb()
+
+  const rows = db
+    .prepare(
+      `SELECT sectors.id,
+              sectors.name,
+              sectors.status,
+              sectors.health,
+              sectors.pressure,
+              COUNT(sensors.id) as sensors
+       FROM sectors
+       LEFT JOIN sensors ON sensors.sector_id = sectors.id AND sensors.status <> 'inactif'
+       GROUP BY sectors.id
+       ORDER BY sectors.id ASC`,
+    )
+    .all() as Array<{
+    id: number
+    name: string
+    status: "normal" | "alerte" | "critique"
+    health: number
+    pressure: number
+    sensors: number
+  }>
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    health: row.health,
+    sensors: row.sensors,
+    pressure: `${toFixedString(row.pressure, 1)} bar`,
+  }))
+}
+
+export async function getCitizenQualityData(): Promise<CitizenQualityData> {
+  const db = await getDb()
+
+  const phRows = db
+    .prepare(
+      `SELECT value, recorded_at as recordedAt
+       FROM quality_readings
+       WHERE metric = 'ph'
+       ORDER BY datetime(recorded_at) DESC
+       LIMIT 7`,
+    )
+    .all() as Array<{ value: number; recordedAt: string }>
+
+  const turbidityRows = db
+    .prepare(
+      `SELECT value, recorded_at as recordedAt
+       FROM quality_readings
+       WHERE metric = 'turbidity'
+       ORDER BY datetime(recorded_at) DESC
+       LIMIT 7`,
+    )
+    .all() as Array<{ value: number; recordedAt: string }>
+
+  const metrics = await getLatestMetrics()
+  const ph = metrics.ph?.value ?? 7.2
+  const turbidity = metrics.turbidity?.value ?? 0.8
+  const chlorine = metrics.chlorine?.value ?? 0.5
+  const temperature = metrics.temperature?.value ?? 18.5
+  const conductivity = metrics.conductivity?.value ?? 420
+  const coliform = metrics.coliform?.value ?? 0
+
+  return {
+    phData: phRows
+      .reverse()
+      .map((row) => ({
+        time: hourLabel(row.recordedAt),
+        value: Number(toFixedString(row.value, 1)),
+      })),
+    turbidityData: turbidityRows
+      .reverse()
+      .map((row) => ({
+        time: hourLabel(row.recordedAt),
+        value: Number(toFixedString(row.value, 1)),
+      })),
+    parameters: [
+      {
+        label: "pH",
+        value: toFixedString(ph, 1),
+        unit: "",
+        status: ph < 6.5 || ph > 8.5 ? "alerte" : "normal",
+        min: "6.5",
+        max: "8.5",
+        description: "Le pH mesure l'acidite ou la basicite de l'eau.",
+      },
+      {
+        label: "Turbidite",
+        value: toFixedString(turbidity, 1),
+        unit: "NTU",
+        status: turbidity > 1 ? "alerte" : "normal",
+        min: "0",
+        max: "1",
+        description: "La turbidite mesure la clarte de l'eau.",
+      },
+      {
+        label: "Chlore residuel",
+        value: toFixedString(chlorine, 2),
+        unit: "mg/L",
+        status: chlorine < 0.2 || chlorine > 0.8 ? "alerte" : "normal",
+        min: "0.2",
+        max: "0.8",
+        description: "Le chlore residuel assure la desinfection de l'eau.",
+      },
+      {
+        label: "Temperature",
+        value: toFixedString(temperature, 1),
+        unit: "C",
+        status: temperature < 10 || temperature > 25 ? "alerte" : "normal",
+        min: "10",
+        max: "25",
+        description: "La temperature de l'eau distribuee.",
+      },
+      {
+        label: "Conductivite",
+        value: toFixedString(conductivity, 0),
+        unit: "uS/cm",
+        status: conductivity < 200 || conductivity > 800 ? "alerte" : "normal",
+        min: "200",
+        max: "800",
+        description: "La conductivite mesure la mineralisation de l'eau.",
+      },
+      {
+        label: "Coliformes",
+        value: toFixedString(coliform, 0),
+        unit: "CFU/100mL",
+        status: coliform > 0 ? "critique" : "normal",
+        min: "0",
+        max: "0",
+        description: "Absence de bacteries coliformes.",
+      },
+    ],
+  }
+}
+
+export async function createIncident(input: {
+  reporterUserId?: number
+  type: string
+  location: string
+  description: string
+  reporterName?: string
+  reporterEmail?: string
+}): Promise<{ id: number }> {
+  const db = await getDb()
+
+  const result = db
+    .prepare(
+      `INSERT INTO incidents (
+        reporter_user_id,
+        type,
+        location,
+        description,
+        reporter_name,
+        reporter_email,
+        status,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Nouveau', ?)`,
+    )
+    .run(
+      input.reporterUserId ?? null,
+      input.type,
+      input.location,
+      input.description,
+      input.reporterName ?? null,
+      input.reporterEmail ?? null,
+      new Date().toISOString(),
+    )
+
+  return { id: Number(result.lastInsertRowid) }
+}
+
+export async function getMapData(): Promise<MapData> {
+  const db = await getDb()
+  const nodes = db
+    .prepare(
+      `SELECT id, x, y, type, label, status, data_json as dataJson
+       FROM map_nodes
+       ORDER BY id ASC`,
+    )
+    .all() as Array<{
+    id: string
+    x: number
+    y: number
+    type: MapNode["type"]
+    label: string
+    status: MapNode["status"]
+    dataJson: string
+  }>
+
+  const links = db
+    .prepare(
+      `SELECT from_node_id as fromNodeId, to_node_id as toNodeId
+       FROM map_connections
+       ORDER BY id ASC`,
+    )
+    .all() as Array<{ fromNodeId: string; toNodeId: string }>
+
+  return {
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      x: node.x,
+      y: node.y,
+      type: node.type,
+      label: node.label,
+      status: node.status,
+      data: JSON.parse(node.dataJson) as Record<string, string>,
+    })),
+    connections: links.map((link) => [link.fromNodeId, link.toNodeId]),
+  }
+}
+
+export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
+  const db = await getDb()
+
+  const flowRows = db
+    .prepare(
+      `SELECT metric, value, recorded_at as recordedAt
+       FROM flow_readings
+       ORDER BY datetime(recorded_at) ASC`,
+    )
+    .all() as Array<{ metric: "debit" | "pression"; value: number; recordedAt: string }>
+
+  const flowByTime = new Map<string, { debit?: number; pression?: number }>()
+  for (const row of flowRows) {
+    const time = hourLabel(row.recordedAt)
+    const existing = flowByTime.get(time) ?? {}
+    existing[row.metric] = row.value
+    flowByTime.set(time, existing)
+  }
+
+  const flowData = Array.from(flowByTime.entries()).map(([time, values]) => ({
+    time,
+    debit: Math.round(values.debit ?? 0),
+    pression: Number(toFixedString(values.pression ?? 0, 1)),
+  }))
+
+  const alertRows = db
+    .prepare(
+      `SELECT id, type, location, severity, probability, created_at as createdAt
+       FROM alerts
+       ORDER BY datetime(created_at) DESC
+       LIMIT 7`,
+    )
+    .all() as Array<{
+    id: string
+    type: string
+    location: string
+    severity: "critique" | "alerte" | "moyen" | "faible"
+    probability: number
+    createdAt: string
+  }>
+
+  const weekAlertRows = db
+    .prepare(
+      `SELECT created_at as createdAt
+       FROM alerts
+       WHERE datetime(created_at) >= datetime('now', '-7 days')`,
+    )
+    .all() as Array<{ createdAt: string }>
+
+  const countsByDay = new Map<string, number>([
+    ["Lun", 0],
+    ["Mar", 0],
+    ["Mer", 0],
+    ["Jeu", 0],
+    ["Ven", 0],
+    ["Sam", 0],
+    ["Dim", 0],
+  ])
+
+  for (const row of weekAlertRows) {
+    const day = weekDayLabel(row.createdAt)
+    countsByDay.set(day, (countsByDay.get(day) ?? 0) + 1)
+  }
+
+  const alertsData = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => ({
+    jour: day,
+    alertes: countsByDay.get(day) ?? 0,
+  }))
+
+  const leakDetections = db
+    .prepare("SELECT COUNT(*) as value FROM alerts WHERE classification = 'Fuite'")
+    .get() as { value: number }
+  const activeAlerts = db
+    .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte')")
+    .get() as { value: number }
+  const criticalAlerts = db
+    .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity = 'critique'")
+    .get() as { value: number }
+  const networkHealth = db.prepare("SELECT ROUND(AVG(health), 1) as value FROM sectors").get() as { value: number }
+  const sensorsTotal = db.prepare("SELECT COUNT(*) as value FROM sensors").get() as { value: number }
+  const sensorsActive = db
+    .prepare("SELECT COUNT(*) as value FROM sensors WHERE status <> 'inactif'")
+    .get() as { value: number }
+
+  const byStatus = db
+    .prepare("SELECT status, COUNT(*) as count FROM sensors GROUP BY status")
+    .all() as Array<{ status: "actif" | "alerte" | "inactif"; count: number }>
+
+  const statusMap = new Map(byStatus.map((item) => [item.status, item.count]))
+
+  return {
+    kpis: {
+      leakDetections: leakDetections.value,
+      activeAlerts: activeAlerts.value,
+      criticalAlerts: criticalAlerts.value,
+      networkHealth: Number(toFixedString(networkHealth.value ?? 0, 1)),
+      activeSensors: sensorsActive.value,
+      availabilityRate: sensorsTotal.value > 0 ? Math.round((sensorsActive.value / sensorsTotal.value) * 100) : 0,
+    },
+    flowData,
+    alertsData,
+    recentAlerts: alertRows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      location: row.location,
+      severity: row.severity,
+      probability: `${row.probability}%`,
+      time: formatRelativeTime(row.createdAt),
+    })),
+    sensorStatus: [
+      { label: "En ligne", count: statusMap.get("actif") ?? 0, color: "bg-success" },
+      { label: "Alerte", count: statusMap.get("alerte") ?? 0, color: "bg-warning" },
+      { label: "Hors ligne", count: statusMap.get("inactif") ?? 0, color: "bg-destructive" },
+    ],
+  }
+}
+
+export async function getOperatorAlerts(filters?: {
+  search?: string
+  severity?: string
+  classification?: string
+}): Promise<{
+  summary: { critique: number; alerte: number; moyen: number; faible: number }
+  items: OperatorAlert[]
+}> {
+  const db = await getDb()
+  const whereClauses: string[] = []
+  const params: Array<string | number> = []
+
+  if (filters?.search) {
+    whereClauses.push("(type LIKE ? OR location LIKE ? OR id LIKE ?)")
+    const searchTerm = `%${filters.search}%`
+    params.push(searchTerm, searchTerm, searchTerm)
+  }
+
+  if (filters?.severity && filters.severity !== "all") {
+    whereClauses.push("severity = ?")
+    params.push(filters.severity)
+  }
+
+  if (filters?.classification && filters.classification !== "all") {
+    whereClauses.push("classification = ?")
+    params.push(filters.classification)
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""
+
+  const rows = db
+    .prepare(
+      `SELECT id, type, classification, location, severity, probability, status, created_at as createdAt
+       FROM alerts
+       ${whereSql}
+       ORDER BY datetime(created_at) DESC`,
+    )
+    .all(...params) as Array<{
+    id: string
+    type: string
+    classification: string
+    location: string
+    severity: "critique" | "alerte" | "moyen" | "faible"
+    probability: number
+    status: string
+    createdAt: string
+  }>
+
+  const summaryRows = db
+    .prepare(
+      `SELECT severity, COUNT(*) as count
+       FROM alerts
+       GROUP BY severity`,
+    )
+    .all() as Array<{ severity: "critique" | "alerte" | "moyen" | "faible"; count: number }>
+
+  const summaryMap = new Map(summaryRows.map((row) => [row.severity, row.count]))
+
+  return {
+    summary: {
+      critique: summaryMap.get("critique") ?? 0,
+      alerte: summaryMap.get("alerte") ?? 0,
+      moyen: summaryMap.get("moyen") ?? 0,
+      faible: summaryMap.get("faible") ?? 0,
+    },
+    items: rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      classification: row.classification,
+      location: row.location,
+      severity: row.severity,
+      probability: `${row.probability}%`,
+      date: toDisplayDate(row.createdAt),
+      status: row.status,
+    })),
+  }
+}
+
+export async function getMaintenanceTasks(): Promise<{
+  stats: {
+    pending: number
+    completedThisMonth: number
+    aiPredictions: number
+    avoidedCost: number
+  }
+  items: MaintenanceTask[]
+}> {
+  const db = await getDb()
+
+  const rows = db
+    .prepare(
+      `SELECT id, asset, type, priority, due_date as dueDate, confidence, status
+       FROM maintenance_tasks
+       ORDER BY due_date ASC`,
+    )
+    .all() as unknown as MaintenanceTask[]
+
+  const pending = rows.filter((task) => task.status !== "Termine").length
+  const aiPredictions = rows.filter((task) => task.confidence >= 70).length
+  const completedThisMonth = Math.max(0, Math.floor(rows.length * 0.7))
+
+  return {
+    stats: {
+      pending,
+      completedThisMonth,
+      aiPredictions,
+      avoidedCost: 42,
+    },
+    items: rows,
+  }
+}
+
+export async function getSensors(search?: string): Promise<{
+  stats: {
+    online: number
+    lowBattery: number
+    offline: number
+  }
+  items: SensorItem[]
+}> {
+  const db = await getDb()
+  const whereClauses: string[] = []
+  const params: Array<string | number> = []
+
+  if (search) {
+    whereClauses.push("(sensors.id LIKE ? OR sensors.location LIKE ? OR sensors.type LIKE ? OR sensors.name LIKE ?)")
+    const term = `%${search}%`
+    params.push(term, term, term, term)
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""
+
+  const rows = db
+    .prepare(
+      `SELECT sensors.id,
+              sensors.name,
+              sensors.type,
+              sensors.location,
+              sensors.status,
+              sensors.battery,
+              sensors.signal,
+              sensors.last_update as lastUpdate,
+              sensors.model,
+              sensors.firmware,
+              sensors.enabled,
+              sectors.name as sector
+       FROM sensors
+       LEFT JOIN sectors ON sectors.id = sensors.sector_id
+       ${whereSql}
+       ORDER BY sensors.id ASC`,
+    )
+    .all(...params) as Array<{
+    id: string
+    name: string
+    type: string
+    location: string
+    status: "actif" | "alerte" | "inactif"
+    battery: number
+    signal: number
+    lastUpdate: string
+    model: string
+    firmware: string
+    enabled: number
+    sector: string | null
+  }>
+
+  const allStats = db
+    .prepare("SELECT status, COUNT(*) as count FROM sensors GROUP BY status")
+    .all() as Array<{ status: "actif" | "alerte" | "inactif"; count: number }>
+
+  const statusMap = new Map(allStats.map((item) => [item.status, item.count]))
+  const lowBatteryRow = db.prepare("SELECT COUNT(*) as count FROM sensors WHERE battery > 0 AND battery < 25").get() as { count: number }
+
+  return {
+    stats: {
+      online: statusMap.get("actif") ?? 0,
+      lowBattery: lowBatteryRow.count,
+      offline: statusMap.get("inactif") ?? 0,
+    },
+    items: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      location: row.location,
+      status: row.status,
+      battery: row.battery,
+      signal: row.signal,
+      lastUpdate: formatRelativeTime(row.lastUpdate),
+      model: row.model,
+      firmware: row.firmware,
+      sector: row.sector ?? "-",
+      enabled: row.enabled === 1,
+    })),
+  }
+}
+
+async function nextSimulationId(): Promise<string> {
+  const db = await getDb()
+  const row = db.prepare("SELECT COUNT(*) as count FROM simulations").get() as { count: number }
+  return `SIM-${(row.count + 1).toString().padStart(3, "0")}`
+}
+
+function computeRiskLabel(avgStress: number): "Eleve" | "Moyen" | "Faible" {
+  if (avgStress >= 35) {
+    return "Eleve"
+  }
+
+  if (avgStress >= 15) {
+    return "Moyen"
+  }
+
+  return "Faible"
+}
+
+export async function runSimulation(input: {
+  name?: string
+  scenario: string
+  drought: number
+  population: number
+  duration: "24h" | "7j" | "30j" | "1a"
+  createdBy: number
+}): Promise<{
+  simulation: SimulationItem
+  points: Array<{ hour: string; demand: number; supply: number; stress: number }>
+  metrics: {
+    averageStress: number
+    peaks: number
+    reservoirCapacity: number
+  }
+}> {
+  const db = await getDb()
+  const id = await nextSimulationId()
+
+  const baseDemand = [100, 60, 140, 180, 160, 130, 90]
+  const baseSupply = [120, 120, 120, 150, 140, 130, 120]
+  const labels = ["0h", "4h", "8h", "12h", "16h", "20h", "24h"]
+
+  const droughtFactor = 1 + input.drought / 130
+  const populationFactor = 1 + input.population / 110
+  const supplyPenalty = Math.max(0.55, 1 - input.drought / 180)
+
+  const points = labels.map((hour, index) => {
+    const demand = Math.round(baseDemand[index] * droughtFactor * populationFactor)
+    const supply = Math.round(baseSupply[index] * supplyPenalty)
+    const stress = Math.max(0, Math.round(((demand - supply) / Math.max(supply, 1)) * 100))
+
+    return { hour, demand, supply, stress }
+  })
+
+  const averageStress = Math.round(points.reduce((total, point) => total + point.stress, 0) / points.length)
+  const peaks = points.filter((point) => point.stress >= 30).length
+  const reservoirCapacity = Math.max(20, Math.round(88 - input.drought * 0.45 - input.population * 0.25))
+  const risk = computeRiskLabel(averageStress)
+  const simulationName =
+    input.name && input.name.trim() !== "" ? input.name.trim() : `Scenario ${input.scenario} ${new Date().toISOString().slice(0, 10)}`
+
+  db.prepare(
+    `INSERT INTO simulations (
+      id, name, scenario, status, result_risk, duration_hours, parameters_json, results_json, created_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    simulationName,
+    input.scenario,
+    "Termine",
+    risk,
+    input.duration === "24h" ? 24 : input.duration === "7j" ? 168 : input.duration === "30j" ? 720 : 8760,
+    JSON.stringify({ drought: input.drought, population: input.population, duration: input.duration }),
+    JSON.stringify(points),
+    input.createdBy,
+    new Date().toISOString(),
+  )
+
+  return {
+    simulation: {
+      id,
+      name: simulationName,
+      scenario: input.scenario,
+      status: "Termine",
+      date: new Date().toISOString().slice(0, 10),
+      resultRisk: risk,
+      duration: input.duration,
+    },
+    points,
+    metrics: {
+      averageStress,
+      peaks,
+      reservoirCapacity,
+    },
+  }
+}
+
+export async function getSimulations(): Promise<{
+  stats: {
+    total: number
+    running: number
+    reports: number
+  }
+  items: SimulationItem[]
+}> {
+  const db = await getDb()
+
+  const rows = db
+    .prepare(
+      `SELECT id, name, scenario, status, result_risk as resultRisk, duration_hours as durationHours, created_at as createdAt
+       FROM simulations
+       ORDER BY datetime(created_at) DESC`,
+    )
+    .all() as Array<{
+    id: string
+    name: string
+    scenario: string
+    status: "Planifie" | "En cours" | "Termine"
+    resultRisk: "Eleve" | "Moyen" | "Faible" | "-"
+    durationHours: number
+    createdAt: string
+  }>
+
+  const running = rows.filter((row) => row.status === "En cours").length
+  const reports = rows.filter((row) => row.status === "Termine").length
+
+  return {
+    stats: {
+      total: rows.length,
+      running,
+      reports,
+    },
+    items: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      scenario: row.scenario,
+      status: row.status,
+      date: row.createdAt.slice(0, 10),
+      resultRisk: row.resultRisk,
+      duration: row.durationHours >= 24 ? `${Math.round(row.durationHours / 24)}j` : `${row.durationHours}h`,
+    })),
+  }
+}
+
+export async function getLatestSimulationRun(): Promise<{
+  scenario: string
+  duration: "24h" | "7j" | "30j" | "1a"
+  points: Array<{ hour: string; demand: number; supply: number; stress: number }>
+  metrics: {
+    averageStress: number
+    peaks: number
+    reservoirCapacity: number
+  }
+}> {
+  const db = await getDb()
+  const row = db
+    .prepare(
+      `SELECT scenario, duration_hours as durationHours, parameters_json as parametersJson, results_json as resultsJson
+       FROM simulations
+       ORDER BY datetime(created_at) DESC
+       LIMIT 1`,
+    )
+    .get() as
+    | {
+        scenario: string
+        durationHours: number
+        parametersJson: string
+        resultsJson: string
+      }
+    | undefined
+
+  if (!row) {
+    return {
+      scenario: "Secheresse",
+      duration: "24h",
+      points: [
+        { hour: "0h", demand: 100, supply: 120, stress: 10 },
+        { hour: "4h", demand: 60, supply: 120, stress: 5 },
+        { hour: "8h", demand: 140, supply: 120, stress: 25 },
+        { hour: "12h", demand: 180, supply: 150, stress: 40 },
+        { hour: "16h", demand: 160, supply: 140, stress: 30 },
+        { hour: "20h", demand: 130, supply: 130, stress: 15 },
+        { hour: "24h", demand: 90, supply: 120, stress: 8 },
+      ],
+      metrics: {
+        averageStress: 19,
+        peaks: 3,
+        reservoirCapacity: 72,
+      },
+    }
+  }
+
+  const points = JSON.parse(row.resultsJson) as Array<{ hour: string; demand: number; supply: number; stress: number }>
+  const averageStress = Math.round(points.reduce((total, point) => total + point.stress, 0) / Math.max(points.length, 1))
+  const peaks = points.filter((point) => point.stress >= 30).length
+  const parameters = JSON.parse(row.parametersJson) as { drought?: number; population?: number; duration?: string }
+  const duration =
+    parameters.duration === "7j" || parameters.duration === "30j" || parameters.duration === "1a" ? parameters.duration : "24h"
+  const reservoirCapacity = Math.max(
+    20,
+    Math.round(88 - (parameters.drought ?? 30) * 0.45 - (parameters.population ?? 15) * 0.25),
+  )
+
+  return {
+    scenario: row.scenario,
+    duration,
+    points,
+    metrics: {
+      averageStress,
+      peaks,
+      reservoirCapacity,
+    },
+  }
+}
+
+export async function getAdminDashboardData(): Promise<AdminDashboardData> {
+  const db = await getDb()
+
+  const activeUsers = db.prepare("SELECT COUNT(*) as value FROM users WHERE is_active = 1").get() as { value: number }
+  const sensors = db.prepare("SELECT COUNT(*) as value FROM sensors").get() as { value: number }
+  const processedAlerts = db.prepare("SELECT COUNT(*) as value FROM alerts").get() as { value: number }
+  const criticalAlerts = db
+    .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity = 'critique'")
+    .get() as { value: number }
+  const offlineSensors = db
+    .prepare("SELECT COUNT(*) as value FROM sensors WHERE status = 'inactif'")
+    .get() as { value: number }
+
+  const userActivity = db
+    .prepare("SELECT month, users FROM monthly_user_activity ORDER BY id ASC")
+    .all() as Array<{ month: string; users: number }>
+
+  const typeRows = db
+    .prepare("SELECT type, COUNT(*) as value FROM sensors GROUP BY type")
+    .all() as Array<{ type: string; value: number }>
+
+  const colorMap: Record<string, string> = {
+    Debit: "oklch(0.45 0.15 240)",
+    Pression: "oklch(0.70 0.15 195)",
+    Qualite: "oklch(0.55 0.12 220)",
+    Temperature: "oklch(0.65 0.10 200)",
+    Acoustique: "oklch(0.75 0.08 210)",
+  }
+
+  return {
+    kpis: {
+      activeUsers: activeUsers.value,
+      sensors: sensors.value,
+      uptime: "99.97%",
+      processedAlerts: processedAlerts.value,
+    },
+    systemMetrics: [
+      { name: "CPU", value: Math.min(92, 35 + criticalAlerts.value * 4) },
+      { name: "Memoire", value: Math.min(89, 50 + offlineSensors.value) },
+      { name: "Stockage", value: 54 },
+      { name: "Bande Passante", value: Math.min(85, 28 + Math.floor(processedAlerts.value / 12)) },
+    ],
+    userActivity,
+    sensorDistribution: typeRows.map((row) => ({
+      name: row.type,
+      value: row.value,
+      color: colorMap[row.type] ?? "oklch(0.65 0.03 220)",
+    })),
+    security: [
+      { label: "Certificats SSL", status: "Valide", color: "bg-success" },
+      { label: "Authentification 2FA", status: "Active", color: "bg-success" },
+      { label: "Derniere sauvegarde", status: "Il y a 2h", color: "bg-success" },
+      { label: "Scan de securite", status: "Aucune menace", color: "bg-success" },
+      { label: "Tentatives de connexion", status: "12 echouees (24h)", color: "bg-warning" },
+    ],
+  }
+}
+
+export async function getAdminUsers(search?: string): Promise<{
+  stats: {
+    total: number
+    active: number
+    operators: number
+    new30d: number
+  }
+  items: AdminUserItem[]
+}> {
+  const db = await getDb()
+
+  const whereClauses: string[] = []
+  const params: Array<string | number> = []
+
+  if (search) {
+    whereClauses.push("(name LIKE ? OR email LIKE ?)")
+    const term = `%${search}%`
+    params.push(term, term)
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""
+
+  const rows = db
+    .prepare(
+      `SELECT id, name, email, role, is_active as isActive, created_at as createdAt, last_login_at as lastLoginAt
+       FROM users
+       ${whereSql}
+       ORDER BY id ASC`,
+    )
+    .all(...params) as Array<{
+    id: number
+    name: string
+    email: string
+    role: UserRole
+    isActive: number
+    createdAt: string
+    lastLoginAt: string | null
+  }>
+
+  const total = (db.prepare("SELECT COUNT(*) as value FROM users").get() as { value: number }).value
+  const active = (db.prepare("SELECT COUNT(*) as value FROM users WHERE is_active = 1").get() as { value: number }).value
+  const operators = (
+    db.prepare("SELECT COUNT(*) as value FROM users WHERE role = 'operateur' AND is_active = 1").get() as {
+      value: number
+    }
+  ).value
+  const new30d = (
+    db
+      .prepare("SELECT COUNT(*) as value FROM users WHERE datetime(created_at) >= datetime('now', '-30 days')")
+      .get() as { value: number }
+  ).value
+
+  return {
+    stats: {
+      total,
+      active,
+      operators,
+      new30d,
+    },
+    items: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: roleToLabel(row.role),
+      status: row.isActive === 1,
+      lastLogin: row.lastLoginAt ? formatRelativeTime(row.lastLoginAt) : "Jamais",
+      initials: initialsFromName(row.name),
+    })),
+  }
+}
+
+export async function setUserStatus(userId: number, active: boolean): Promise<void> {
+  const db = await getDb()
+  db.prepare("UPDATE users SET is_active = ? WHERE id = ?").run(active ? 1 : 0, userId)
+}
+
+export async function getAdminDevices(search?: string): Promise<{
+  stats: {
+    total: number
+    online: number
+    offline: number
+    updateRequired: number
+  }
+  items: SensorItem[]
+}> {
+  const sensors = await getSensors(search)
+
+  const updateRequired = sensors.items.filter((item) => {
+    const major = Number.parseInt((item.firmware ?? "v0.0.0").replace("v", "").split(".")[0] ?? "0", 10)
+    return Number.isFinite(major) && major < 3
+  }).length
+
+  return {
+    stats: {
+      total: sensors.items.length,
+      online: sensors.stats.online,
+      offline: sensors.stats.offline,
+      updateRequired,
+    },
+    items: sensors.items,
+  }
+}
+
+export async function setDeviceEnabled(deviceId: string, enabled: boolean): Promise<void> {
+  const db = await getDb()
+
+  if (enabled) {
+    db.prepare(
+      `UPDATE sensors
+       SET enabled = 1,
+           status = CASE WHEN status = 'inactif' THEN 'actif' ELSE status END,
+           last_update = ?
+       WHERE id = ?`,
+    ).run(new Date().toISOString(), deviceId)
+    return
+  }
+
+  db.prepare("UPDATE sensors SET enabled = 0, status = 'inactif', last_update = ? WHERE id = ?").run(new Date().toISOString(), deviceId)
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  orgName: "Ville de Paris - Service des Eaux",
+  timezone: "europe-paris",
+  apiKey: "aqp_sk_9f2ce1d0bd9f87d2f45f11",
+  notifications: {
+    criticalEmail: true,
+    dailyReport: true,
+    predictiveMaintenance: true,
+    citizenReports: false,
+  },
+  security: {
+    require2FA: true,
+    sessionExpiry: "8h",
+    auditLogs: true,
+  },
+  database: {
+    autoBackup: true,
+    retentionPeriod: "1y",
+  },
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  const db = await getDb()
+  const row = db
+    .prepare(
+      `SELECT org_name as orgName,
+              timezone,
+              api_key as apiKey,
+              notifications_json as notificationsJson,
+              security_json as securityJson,
+              database_json as databaseJson
+       FROM settings
+       WHERE id = 1`,
+    )
+    .get() as
+    | {
+        orgName: string
+        timezone: string
+        apiKey: string
+        notificationsJson: string
+        securityJson: string
+        databaseJson: string
+      }
+    | undefined
+
+  if (!row) {
+    return DEFAULT_SETTINGS
+  }
+
+  return {
+    orgName: row.orgName,
+    timezone: row.timezone,
+    apiKey: row.apiKey,
+    notifications: JSON.parse(row.notificationsJson) as AppSettings["notifications"],
+    security: JSON.parse(row.securityJson) as AppSettings["security"],
+    database: JSON.parse(row.databaseJson) as AppSettings["database"],
+  }
+}
+
+export async function updateSettings(settings: AppSettings): Promise<void> {
+  const db = await getDb()
+  db.prepare(
+    `UPDATE settings
+     SET org_name = ?,
+         timezone = ?,
+         api_key = ?,
+         notifications_json = ?,
+         security_json = ?,
+         database_json = ?,
+         updated_at = ?
+     WHERE id = 1`,
+  ).run(
+    settings.orgName,
+    settings.timezone,
+    settings.apiKey,
+    JSON.stringify(settings.notifications),
+    JSON.stringify(settings.security),
+    JSON.stringify(settings.database),
+    new Date().toISOString(),
+  )
+}
+
+export async function getUserById(id: number): Promise<{ id: number; name: string; email: string; role: UserRole } | null> {
+  const db = await getDb()
+  const row = db
+    .prepare("SELECT id, name, email, role FROM users WHERE id = ? LIMIT 1")
+    .get(id) as { id: number; name: string; email: string; role: UserRole } | undefined
+
+  return row ?? null
+}
+
+export async function getNotificationCount(role: UserRole): Promise<number> {
+  const db = await getDb()
+
+  if (role === "citoyen") {
+    const row = db
+      .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte') AND datetime(created_at) >= datetime('now', '-24 hours')")
+      .get() as { value: number }
+    return row.value
+  }
+
+  if (role === "operateur") {
+    const row = db
+      .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte') AND status IN ('En cours', 'Analyse', 'Investigation')")
+      .get() as { value: number }
+    return row.value
+  }
+
+  const incidents = db.prepare("SELECT COUNT(*) as value FROM incidents WHERE status = 'Nouveau'").get() as { value: number }
+  const users = db.prepare("SELECT COUNT(*) as value FROM users WHERE is_active = 0").get() as { value: number }
+  return incidents.value + users.value
+}

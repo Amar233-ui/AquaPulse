@@ -15,13 +15,13 @@ export function CTASection() {
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button asChild size="lg" className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
-              <Link href="/operateur">
+              <Link href="/auth/register">
                 {"Demander une Demo"}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="border-primary-foreground/20 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
-              <Link href="/citoyen">
+              <Link href="/auth/login">
                 Espace Citoyen
               </Link>
             </Button>

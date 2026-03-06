@@ -6,18 +6,10 @@ import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/status-badge"
 import { ZoomIn, ZoomOut, Maximize2, Layers, Info } from "lucide-react"
 import { useState } from "react"
+import { useApiQuery } from "@/hooks/use-api-query"
+import type { MapData, MapNode } from "@/lib/types"
 
-interface MapNode {
-  id: string
-  x: number
-  y: number
-  type: "reservoir" | "pump" | "sensor" | "valve" | "junction"
-  label: string
-  status: "normal" | "alerte" | "critique"
-  data?: Record<string, string>
-}
-
-const nodes: MapNode[] = [
+const DEFAULT_NODES: MapNode[] = [
   { id: "R1", x: 15, y: 12, type: "reservoir", label: "Reservoir Nord", status: "normal", data: { niveau: "82%", capacite: "50,000 m3" } },
   { id: "R2", x: 80, y: 75, type: "reservoir", label: "Reservoir Sud", status: "normal", data: { niveau: "74%", capacite: "35,000 m3" } },
   { id: "P1", x: 30, y: 25, type: "pump", label: "Station Pompage Nord", status: "normal", data: { debit: "1,200 m3/h", pression: "3.4 bar" } },
@@ -33,7 +25,7 @@ const nodes: MapNode[] = [
   { id: "P3", x: 20, y: 70, type: "pump", label: "Station Ouest", status: "normal", data: { debit: "980 m3/h", pression: "3.2 bar" } },
 ]
 
-const connections: [string, string][] = [
+const DEFAULT_CONNECTIONS: [string, string][] = [
   ["R1", "P1"], ["P1", "V1"], ["V1", "J1"], ["J1", "S2"],
   ["S1", "J1"], ["J1", "V2"], ["V2", "P2"], ["P2", "R2"],
   ["J1", "J2"], ["J2", "S4"], ["S3", "P3"], ["P3", "J1"],
@@ -61,6 +53,12 @@ function getNodePos(node: MapNode) {
 export function DigitalTwinMap() {
   const [selected, setSelected] = useState<MapNode | null>(null)
   const [zoom, setZoom] = useState(1)
+  const { data } = useApiQuery<MapData>("/api/map", {
+    nodes: DEFAULT_NODES,
+    connections: DEFAULT_CONNECTIONS,
+  })
+  const nodes = data.nodes
+  const connections = data.connections
 
   return (
     <div className="space-y-4">

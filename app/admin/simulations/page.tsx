@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,13 +7,26 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FlaskConical, Play, Eye, Download, Plus } from "lucide-react"
 
-const simulations = [
-  { id: "SIM-001", name: "Secheresse Estivale 2026", scenario: "Secheresse", status: "Termine", date: "2026-02-20", resultRisk: "Moyen", duration: "24h" },
-  { id: "SIM-002", name: "Inondation Flash - Zone Sud", scenario: "Inondation", status: "Termine", date: "2026-02-18", resultRisk: "Eleve", duration: "48h" },
-  { id: "SIM-003", name: "Contamination Reservoir A", scenario: "Contamination", status: "En cours", date: "2026-02-23", resultRisk: "-", duration: "12h" },
-  { id: "SIM-004", name: "Panne Electrique Generale", scenario: "Panne", status: "Planifie", date: "2026-02-25", resultRisk: "-", duration: "6h" },
-  { id: "SIM-005", name: "Pic de Demande Hivernal", scenario: "Surcharge", status: "Termine", date: "2026-02-15", resultRisk: "Faible", duration: "72h" },
-]
+import { useApiQuery } from "@/hooks/use-api-query"
+import type { SimulationItem } from "@/lib/types"
+
+interface SimulationsResponse {
+  stats: {
+    total: number
+    running: number
+    reports: number
+  }
+  items: SimulationItem[]
+}
+
+const DEFAULT_DATA: SimulationsResponse = {
+  stats: {
+    total: 0,
+    running: 0,
+    reports: 0,
+  },
+  items: [],
+}
 
 const statusColors: Record<string, string> = {
   Termine: "bg-success/15 text-success border-success/20",
@@ -29,6 +42,8 @@ const riskColors: Record<string, string> = {
 }
 
 export default function SimulationsPage() {
+  const { data } = useApiQuery<SimulationsResponse>("/api/admin/simulations", DEFAULT_DATA)
+
   return (
     <DashboardLayout role="admin" title="Scenarios de Simulation">
       <div className="space-y-6">
@@ -38,7 +53,7 @@ export default function SimulationsPage() {
               <FlaskConical className="h-8 w-8 text-accent" />
               <div>
                 <p className="text-xs text-muted-foreground">Total Simulations</p>
-                <p className="text-xl font-bold text-foreground">42</p>
+                <p className="text-xl font-bold text-foreground">{data.stats.total}</p>
               </div>
             </CardContent>
           </Card>
@@ -47,7 +62,7 @@ export default function SimulationsPage() {
               <Play className="h-8 w-8 text-success" />
               <div>
                 <p className="text-xs text-muted-foreground">En Cours</p>
-                <p className="text-xl font-bold text-foreground">1</p>
+                <p className="text-xl font-bold text-foreground">{data.stats.running}</p>
               </div>
             </CardContent>
           </Card>
@@ -56,7 +71,7 @@ export default function SimulationsPage() {
               <Download className="h-8 w-8 text-primary" />
               <div>
                 <p className="text-xs text-muted-foreground">Rapports Generes</p>
-                <p className="text-xl font-bold text-foreground">38</p>
+                <p className="text-xl font-bold text-foreground">{data.stats.reports}</p>
               </div>
             </CardContent>
           </Card>
@@ -85,7 +100,7 @@ export default function SimulationsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {simulations.map((sim) => (
+                {data.items.map((sim) => (
                   <TableRow key={sim.id}>
                     <TableCell className="font-mono text-xs">{sim.id}</TableCell>
                     <TableCell className="font-medium">{sim.name}</TableCell>

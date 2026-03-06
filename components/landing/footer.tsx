@@ -30,9 +30,9 @@ export function Footer() {
             <h4 className="text-sm font-semibold text-foreground">Acces</h4>
             <ul className="mt-3 space-y-2">
               {[
-                { label: "Espace Citoyen", href: "/citoyen" },
-                { label: "Dashboard Operateur", href: "/operateur" },
-                { label: "Panel Admin", href: "/admin" },
+                { label: "Inscription", href: "/auth/register" },
+                { label: "Connexion", href: "/auth/login" },
+                { label: "Acces Admin", href: "/auth/login" },
               ].map((item) => (
                 <li key={item.label}>
                   <Link href={item.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">

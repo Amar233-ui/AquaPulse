@@ -9,8 +9,8 @@ import { useState } from "react"
 const navLinks = [
   { label: "Fonctionnalites", href: "#features" },
   { label: "Comment ca marche", href: "#how-it-works" },
-  { label: "Espace Citoyen", href: "/citoyen" },
-  { label: "Operateur", href: "/operateur" },
+  { label: "Espace Citoyen", href: "/auth/register" },
+  { label: "Operateur", href: "/auth/login" },
 ]
 
 export function Navbar() {
@@ -37,10 +37,10 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 md:flex">
           <Button asChild variant="ghost" size="sm" className="text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-            <Link href="/admin">Admin</Link>
+            <Link href="/auth/login">Se connecter</Link>
           </Button>
           <Button asChild size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
-            <Link href="/operateur">Dashboard</Link>
+            <Link href="/auth/register">S'inscrire</Link>
           </Button>
         </div>
 
@@ -68,10 +68,10 @@ export function Navbar() {
             ))}
             <div className="flex gap-2 pt-3">
               <Button asChild variant="ghost" size="sm" className="text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                <Link href="/admin">Admin</Link>
+                <Link href="/auth/login">Se connecter</Link>
               </Button>
               <Button asChild size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                <Link href="/operateur">Dashboard</Link>
+                <Link href="/auth/register">S'inscrire</Link>
               </Button>
             </div>
           </div>

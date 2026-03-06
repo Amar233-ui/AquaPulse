@@ -4,10 +4,61 @@ import { Bell, Search, User, Menu } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import type { UserRole } from "@/lib/types"
+
+interface AuthHeaderState {
+  user: {
+    id: number
+    name: string
+    email: string
+    role: UserRole
+  } | null
+  notifications: number
+}
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  citoyen: "Citoyen",
+  operateur: "Operateur",
+  admin: "Admin",
+}
 
 export function DashboardHeader({ title }: { title: string }) {
+  const router = useRouter()
   const [showSearch, setShowSearch] = useState(false)
+  const [auth, setAuth] = useState<AuthHeaderState>({ user: null, notifications: 0 })
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAuth() {
+      try {
+        const response = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+        if (!response.ok) {
+          return
+        }
+
+        const json = (await response.json()) as AuthHeaderState
+        if (!cancelled) {
+          setAuth(json)
+        }
+      } catch {
+        // ignore auth header errors on render
+      }
+    }
+
+    void loadAuth()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+    router.push("/auth/login")
+    router.refresh()
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md lg:px-6">
@@ -40,17 +91,26 @@ export function DashboardHeader({ title }: { title: string }) {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5 text-muted-foreground" />
           <Badge className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center p-0 text-[10px]">
-            3
+            {auth.notifications}
           </Badge>
           <span className="sr-only">Notifications</span>
         </Button>
 
-        <Button variant="ghost" size="icon" className="rounded-full">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
-            <User className="h-4 w-4 text-primary-foreground" />
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+              <User className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <span className="sr-only">Profil</span>
+          </Button>
+          <div className="hidden text-right lg:block">
+            <p className="text-sm font-medium text-foreground">{auth.user?.name ?? "Utilisateur"}</p>
+            <p className="text-xs text-muted-foreground">{auth.user ? ROLE_LABEL[auth.user.role] : "role"}</p>
           </div>
-          <span className="sr-only">Profil</span>
-        </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Deconnexion
+          </Button>
+        </div>
       </div>
     </header>
   )

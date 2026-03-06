@@ -8,21 +8,30 @@ import { Button } from "@/components/ui/button"
 import { Droplets, Thermometer, Activity, AlertTriangle, MessageSquareWarning, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { Progress } from "@/components/ui/progress"
+import { useApiQuery } from "@/hooks/use-api-query"
+import type { CitizenDashboardData } from "@/lib/types"
 
-const waterQualityIndicators = [
-  { label: "pH", value: "7.2", status: "normal" as const, target: "6.5 - 8.5" },
-  { label: "Turbidite", value: "0.8 NTU", status: "normal" as const, target: "< 1 NTU" },
-  { label: "Chlore residuel", value: "0.5 mg/L", status: "normal" as const, target: "0.2 - 0.8 mg/L" },
-  { label: "Contamination", value: "0 CFU", status: "normal" as const, target: "0 CFU/100mL" },
-]
-
-const recentAlerts = [
-  { id: 1, message: "Maintenance preventive - Secteur Nord", time: "Il y a 2h", type: "alerte" as const },
-  { id: 2, message: "Qualite eau excellente - Zone Centre", time: "Il y a 5h", type: "normal" as const },
-  { id: 3, message: "Debit anormal detecte - Rue de la Paix", time: "Il y a 8h", type: "alerte" as const },
-]
+const DEFAULT_DATA: CitizenDashboardData = {
+  qualityScore: 96,
+  temperature: 18.5,
+  networkState: "Normal",
+  activeAlerts: 0,
+  networkHealth: 94,
+  activeSensorsRate: 98,
+  pressureRate: 87,
+  waterQualityIndicators: [
+    { label: "pH", value: "7.2", status: "normal", target: "6.5 - 8.5" },
+    { label: "Turbidite", value: "0.8 NTU", status: "normal", target: "< 1 NTU" },
+    { label: "Chlore residuel", value: "0.5 mg/L", status: "normal", target: "0.2 - 0.8 mg/L" },
+    { label: "Contamination", value: "0 CFU", status: "normal", target: "0 CFU/100mL" },
+  ],
+  recentAlerts: [],
+}
 
 export default function CitoyenDashboard() {
+  const { data } = useApiQuery<CitizenDashboardData>("/api/citoyen/dashboard", DEFAULT_DATA)
+  const qualityLabel = data.qualityScore >= 90 ? "Excellente" : data.qualityScore >= 75 ? "Bonne" : "Moyenne"
+
   return (
     <DashboardLayout role="citoyen" title="Tableau de Bord Citoyen">
       <div className="space-y-6">
@@ -30,28 +39,28 @@ export default function CitoyenDashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard
             title="Qualite Globale"
-            value="Excellente"
-            change="+2.3% ce mois"
+            value={qualityLabel}
+            change={`${data.qualityScore}% conformite`}
             changeType="positive"
             icon={Droplets}
           />
           <KPICard
             title="Temperature"
-            value="18.5 C"
+            value={`${data.temperature} C`}
             change="Stable"
             changeType="neutral"
             icon={Thermometer}
           />
           <KPICard
             title="Etat du Reseau"
-            value="Normal"
-            change="Aucune alerte critique"
-            changeType="positive"
+            value={data.networkState}
+            change={data.activeAlerts > 0 ? `${data.activeAlerts} alertes en cours` : "Aucune alerte critique"}
+            changeType={data.activeAlerts > 0 ? "neutral" : "positive"}
             icon={Activity}
           />
           <KPICard
             title="Alertes Actives"
-            value="2"
+            value={`${data.activeAlerts}`}
             change="En cours de traitement"
             changeType="neutral"
             icon={AlertTriangle}
@@ -70,7 +79,7 @@ export default function CitoyenDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 sm:grid-cols-2">
-                {waterQualityIndicators.map((indicator) => (
+                {data.waterQualityIndicators.map((indicator) => (
                   <div key={indicator.label} className="flex items-center justify-between rounded-lg border border-border/40 bg-secondary/50 p-4">
                     <div>
                       <p className="text-sm font-medium text-foreground">{indicator.label}</p>
@@ -94,23 +103,23 @@ export default function CitoyenDashboard() {
                 <div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Sante globale</span>
-                    <span className="font-medium text-foreground">94%</span>
+                    <span className="font-medium text-foreground">{data.networkHealth}%</span>
                   </div>
-                  <Progress value={94} className="mt-2 h-2" />
+                  <Progress value={data.networkHealth} className="mt-2 h-2" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Capteurs actifs</span>
-                    <span className="font-medium text-foreground">98%</span>
+                    <span className="font-medium text-foreground">{data.activeSensorsRate}%</span>
                   </div>
-                  <Progress value={98} className="mt-2 h-2" />
+                  <Progress value={data.activeSensorsRate} className="mt-2 h-2" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Pression moyenne</span>
-                    <span className="font-medium text-foreground">87%</span>
+                    <span className="font-medium text-foreground">{data.pressureRate}%</span>
                   </div>
-                  <Progress value={87} className="mt-2 h-2" />
+                  <Progress value={data.pressureRate} className="mt-2 h-2" />
                 </div>
               </CardContent>
             </Card>
@@ -134,7 +143,7 @@ export default function CitoyenDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentAlerts.map((alert) => (
+              {data.recentAlerts.map((alert) => (
                 <div key={alert.id} className="flex items-center justify-between rounded-lg border border-border/40 bg-secondary/30 px-4 py-3">
                   <div className="flex items-center gap-3">
                     <StatusBadge status={alert.type} />

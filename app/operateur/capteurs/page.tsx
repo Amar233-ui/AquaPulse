@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,19 +7,40 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Wifi, WifiOff, Battery, Signal } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
+import { useMemo, useState } from "react"
 
-const sensors = [
-  { id: "SNR-001", type: "Debit", location: "Bd Haussmann - Noeud #247", status: "actif" as const, battery: 92, signal: 95, lastUpdate: "Il y a 2 min" },
-  { id: "SNR-002", type: "Pression", location: "Station Est - Vanne #12", status: "actif" as const, battery: 87, signal: 88, lastUpdate: "Il y a 3 min" },
-  { id: "SNR-003", type: "Qualite", location: "Reservoir Nord - Zone C", status: "alerte" as const, battery: 23, signal: 72, lastUpdate: "Il y a 15 min" },
-  { id: "SNR-004", type: "Temperature", location: "Centre-Ville - Point #56", status: "actif" as const, battery: 95, signal: 98, lastUpdate: "Il y a 1 min" },
-  { id: "SNR-005", type: "Debit", location: "Secteur 12 - Compteur #891", status: "actif" as const, battery: 78, signal: 91, lastUpdate: "Il y a 5 min" },
-  { id: "SNR-006", type: "Pression", location: "Zone Industrielle - Vanne #45", status: "inactif" as const, battery: 0, signal: 0, lastUpdate: "Il y a 2h" },
-  { id: "SNR-007", type: "Qualite", location: "Reservoir Sud - Zone A", status: "actif" as const, battery: 65, signal: 84, lastUpdate: "Il y a 4 min" },
-  { id: "SNR-008", type: "Acoustique", location: "Rue de Rivoli - Joint #12", status: "actif" as const, battery: 81, signal: 90, lastUpdate: "Il y a 2 min" },
-]
+import { useApiQuery } from "@/hooks/use-api-query"
+import type { SensorItem } from "@/lib/types"
+
+interface SensorsResponse {
+  stats: {
+    online: number
+    lowBattery: number
+    offline: number
+  }
+  items: SensorItem[]
+}
+
+const DEFAULT_DATA: SensorsResponse = {
+  stats: {
+    online: 0,
+    lowBattery: 0,
+    offline: 0,
+  },
+  items: [],
+}
 
 export default function CapteursPage() {
+  const [search, setSearch] = useState("")
+  const query = useMemo(() => {
+    const params = new URLSearchParams()
+    if (search) params.set("search", search)
+    const suffix = params.toString()
+    return `/api/operateur/capteurs${suffix ? `?${suffix}` : ""}`
+  }, [search])
+
+  const { data } = useApiQuery<SensorsResponse>(query, DEFAULT_DATA)
+
   return (
     <DashboardLayout role="operateur" title="Monitoring des Capteurs">
       <div className="space-y-6">
@@ -31,7 +52,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">En Ligne</p>
-                <p className="text-2xl font-bold text-foreground">2,352</p>
+                <p className="text-2xl font-bold text-foreground">{data.stats.online}</p>
               </div>
             </CardContent>
           </Card>
@@ -42,7 +63,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Batterie Faible</p>
-                <p className="text-2xl font-bold text-foreground">38</p>
+                <p className="text-2xl font-bold text-foreground">{data.stats.lowBattery}</p>
               </div>
             </CardContent>
           </Card>
@@ -53,7 +74,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Hors Ligne</p>
-                <p className="text-2xl font-bold text-foreground">10</p>
+                <p className="text-2xl font-bold text-foreground">{data.stats.offline}</p>
               </div>
             </CardContent>
           </Card>
@@ -64,7 +85,12 @@ export default function CapteursPage() {
             <CardTitle className="text-base font-semibold">Liste des Capteurs</CardTitle>
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Rechercher un capteur..." className="pl-8" />
+              <Input
+                placeholder="Rechercher un capteur..."
+                className="pl-8"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -81,7 +107,7 @@ export default function CapteursPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sensors.map((sensor) => (
+                {data.items.map((sensor) => (
                   <TableRow key={sensor.id}>
                     <TableCell className="font-mono text-xs">{sensor.id}</TableCell>
                     <TableCell className="font-medium">{sensor.type}</TableCell>

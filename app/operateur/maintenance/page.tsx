@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { KPICard } from "@/components/kpi-card"
@@ -8,13 +8,28 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Wrench, Clock, CheckCircle2, AlertTriangle, Calendar, ArrowRight } from "lucide-react"
 
-const maintenanceTasks = [
-  { id: "MT-001", asset: "Pompe #3 - Station Est", type: "Remplacement joint", priority: "Haute", dueDate: "2026-02-24", confidence: 94, status: "Urgent" },
-  { id: "MT-002", asset: "Vanne #45 - Zone Industrielle", type: "Calibration", priority: "Moyenne", dueDate: "2026-02-26", confidence: 87, status: "Planifie" },
-  { id: "MT-003", asset: "Capteur #112 - Reservoir Nord", type: "Nettoyage", priority: "Basse", dueDate: "2026-02-28", confidence: 72, status: "Planifie" },
-  { id: "MT-004", asset: "Canalisation C12 - Secteur 5", type: "Inspection", priority: "Haute", dueDate: "2026-03-01", confidence: 68, status: "Planifie" },
-  { id: "MT-005", asset: "Pompe #7 - Station Ouest", type: "Remplacement filtre", priority: "Moyenne", dueDate: "2026-03-03", confidence: 62, status: "Planifie" },
-]
+import { useApiQuery } from "@/hooks/use-api-query"
+import type { MaintenanceTask } from "@/lib/types"
+
+interface MaintenanceResponse {
+  stats: {
+    pending: number
+    completedThisMonth: number
+    aiPredictions: number
+    avoidedCost: number
+  }
+  items: MaintenanceTask[]
+}
+
+const DEFAULT_DATA: MaintenanceResponse = {
+  stats: {
+    pending: 0,
+    completedThisMonth: 0,
+    aiPredictions: 0,
+    avoidedCost: 0,
+  },
+  items: [],
+}
 
 const priorityColors: Record<string, string> = {
   Haute: "bg-destructive/15 text-destructive border-destructive/20",
@@ -23,14 +38,16 @@ const priorityColors: Record<string, string> = {
 }
 
 export default function MaintenancePage() {
+  const { data } = useApiQuery<MaintenanceResponse>("/api/operateur/maintenance", DEFAULT_DATA)
+
   return (
     <DashboardLayout role="operateur" title="Maintenance Predictive">
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard title="Taches en Attente" value="12" change="3 urgentes" changeType="negative" icon={Clock} />
-          <KPICard title="Completees ce Mois" value="28" change="+15% vs mois dernier" changeType="positive" icon={CheckCircle2} />
-          <KPICard title="Predictions IA" value="5" change="Nouvelles cette semaine" changeType="neutral" icon={AlertTriangle} iconColor="bg-warning/15" />
-          <KPICard title="Cout Evite" value="42K" change="Estimation mensuelle" changeType="positive" icon={Wrench} />
+          <KPICard title="Taches en Attente" value={`${data.stats.pending}`} change="Prioriser les urgences" changeType="negative" icon={Clock} />
+          <KPICard title="Completees ce Mois" value={`${data.stats.completedThisMonth}`} change="Execution terrain" changeType="positive" icon={CheckCircle2} />
+          <KPICard title="Predictions IA" value={`${data.stats.aiPredictions}`} change="Nouvelles cette semaine" changeType="neutral" icon={AlertTriangle} iconColor="bg-warning/15" />
+          <KPICard title="Cout Evite" value={`${data.stats.avoidedCost}K`} change="Estimation mensuelle" changeType="positive" icon={Wrench} />
         </div>
 
         <Card className="border border-border/60 shadow-sm">
@@ -43,7 +60,7 @@ export default function MaintenancePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {maintenanceTasks.map((task) => (
+              {data.items.map((task) => (
                 <div key={task.id} className="flex flex-col gap-4 rounded-lg border border-border/40 bg-secondary/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
