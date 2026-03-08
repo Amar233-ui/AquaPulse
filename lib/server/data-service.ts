@@ -17,18 +17,17 @@ import type {
   UserRole,
 } from "@/lib/types"
 import { getDb } from "@/lib/server/db"
+import {
+  createStoredUser,
+  findStoredUserByEmail,
+  findStoredUserById,
+  listStoredUsers,
+  setStoredUserActive,
+  type StoredUserRow,
+} from "@/lib/server/user-store"
 import { formatRelativeTime, hourLabel, toDisplayDate, weekDayLabel } from "@/lib/server/time"
 
-interface UserRow {
-  id: number
-  name: string
-  email: string
-  role: UserRole
-  passwordHash: string
-  isActive: number
-  createdAt: string
-  lastLoginAt: string | null
-}
+type UserRow = StoredUserRow
 
 interface LatestMetricRow {
   metric: string
@@ -92,24 +91,7 @@ async function getLatestMetrics(): Promise<Record<string, LatestMetricRow>> {
 }
 
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
-  const db = await getDb()
-  const row = db
-    .prepare(
-      `SELECT id,
-              name,
-              email,
-              role,
-              password_hash as passwordHash,
-              is_active as isActive,
-              created_at as createdAt,
-              last_login_at as lastLoginAt
-       FROM users
-       WHERE email = ?
-       LIMIT 1`,
-    )
-    .get(email.toLowerCase()) as UserRow | undefined
-
-  return row ?? null
+  return findStoredUserByEmail(email)
 }
 
 export async function createUser(input: {
@@ -118,20 +100,18 @@ export async function createUser(input: {
   role: UserRole
   passwordHash: string
 }): Promise<{ id: number; name: string; email: string; role: UserRole }> {
-  const db = await getDb()
-
-  const result = db
-    .prepare(
-      `INSERT INTO users (name, email, password_hash, role, is_active, created_at)
-       VALUES (?, ?, ?, ?, 1, ?)`,
-    )
-    .run(input.name.trim(), input.email.trim().toLowerCase(), input.passwordHash, input.role, new Date().toISOString())
+  const row = await createStoredUser({
+    name: input.name,
+    email: input.email,
+    role: input.role,
+    passwordHash: input.passwordHash,
+  })
 
   return {
-    id: Number(result.lastInsertRowid),
-    name: input.name.trim(),
-    email: input.email.trim().toLowerCase(),
-    role: input.role,
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
   }
 }
 
@@ -1017,48 +997,17 @@ export async function getAdminUsers(search?: string): Promise<{
   }
   items: AdminUserItem[]
 }> {
-  const db = await getDb()
+  const [allRows, rows] = await Promise.all([listStoredUsers(), listStoredUsers(search)])
+  const now = Date.now()
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
-  const whereClauses: string[] = []
-  const params: Array<string | number> = []
-
-  if (search) {
-    whereClauses.push("(name LIKE ? OR email LIKE ?)")
-    const term = `%${search}%`
-    params.push(term, term)
-  }
-
-  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : ""
-
-  const rows = db
-    .prepare(
-      `SELECT id, name, email, role, is_active as isActive, created_at as createdAt, last_login_at as lastLoginAt
-       FROM users
-       ${whereSql}
-       ORDER BY id ASC`,
-    )
-    .all(...params) as Array<{
-    id: number
-    name: string
-    email: string
-    role: UserRole
-    isActive: number
-    createdAt: string
-    lastLoginAt: string | null
-  }>
-
-  const total = (db.prepare("SELECT COUNT(*) as value FROM users").get() as { value: number }).value
-  const active = (db.prepare("SELECT COUNT(*) as value FROM users WHERE is_active = 1").get() as { value: number }).value
-  const operators = (
-    db.prepare("SELECT COUNT(*) as value FROM users WHERE role = 'operateur' AND is_active = 1").get() as {
-      value: number
-    }
-  ).value
-  const new30d = (
-    db
-      .prepare("SELECT COUNT(*) as value FROM users WHERE datetime(created_at) >= datetime('now', '-30 days')")
-      .get() as { value: number }
-  ).value
+  const total = allRows.length
+  const active = allRows.filter((row) => row.isActive === 1).length
+  const operators = allRows.filter((row) => row.role === "operateur" && row.isActive === 1).length
+  const new30d = allRows.filter((row) => {
+    const createdAt = Date.parse(row.createdAt)
+    return Number.isFinite(createdAt) && now - createdAt <= THIRTY_DAYS_MS
+  }).length
 
   return {
     stats: {
@@ -1080,8 +1029,7 @@ export async function getAdminUsers(search?: string): Promise<{
 }
 
 export async function setUserStatus(userId: number, active: boolean): Promise<void> {
-  const db = await getDb()
-  db.prepare("UPDATE users SET is_active = ? WHERE id = ?").run(active ? 1 : 0, userId)
+  await setStoredUserActive(userId, active)
 }
 
 export async function getAdminDevices(search?: string): Promise<{
@@ -1211,12 +1159,17 @@ export async function updateSettings(settings: AppSettings): Promise<void> {
 }
 
 export async function getUserById(id: number): Promise<{ id: number; name: string; email: string; role: UserRole } | null> {
-  const db = await getDb()
-  const row = db
-    .prepare("SELECT id, name, email, role FROM users WHERE id = ? LIMIT 1")
-    .get(id) as { id: number; name: string; email: string; role: UserRole } | undefined
+  const row = await findStoredUserById(id)
+  if (!row) {
+    return null
+  }
 
-  return row ?? null
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+  }
 }
 
 export async function getNotificationCount(role: UserRole): Promise<number> {

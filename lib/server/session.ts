@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 
 import { SESSION_COOKIE_NAME, createSessionToken, readCookieValue, verifySessionToken } from "@/lib/auth/session"
 import { isRoleAllowed } from "@/lib/auth/roles"
-import { getDb } from "@/lib/server/db"
+import { findStoredUserById, touchStoredUserLogin } from "@/lib/server/user-store"
 import type { AuthUser, UserRole } from "@/lib/types"
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
@@ -19,23 +19,7 @@ export class AuthError extends Error {
 }
 
 async function findUserById(id: number): Promise<AuthUser | null> {
-  const db = await getDb()
-  const row = db
-    .prepare(
-      `SELECT id, name, email, role, is_active as isActive
-       FROM users
-       WHERE id = ?
-       LIMIT 1`,
-    )
-    .get(id) as
-    | {
-        id: number
-        name: string
-        email: string
-        role: UserRole
-        isActive: number
-      }
-    | undefined
+  const row = await findStoredUserById(id)
 
   if (!row || row.isActive !== 1) {
     return null
@@ -122,6 +106,5 @@ export function authErrorResponse(error: unknown): NextResponse {
 }
 
 export async function touchUserLogin(userId: number) {
-  const db = await getDb()
-  db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(new Date().toISOString(), userId)
+  await touchStoredUserLogin(userId)
 }

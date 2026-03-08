@@ -108,6 +108,26 @@ L'application sera accessible sur `http://localhost:3000`.
 
 ---
 
+## Persistance Auth en Production
+
+En local, AquaPulse utilise SQLite.
+
+En deployment serverless, pour garantir:
+- inscription,
+- deconnexion/reconnexion,
+- connexion depuis un autre appareil,
+
+configurez un store partage pour les utilisateurs avec Vercel KV / Upstash Redis:
+
+- `KV_REST_API_URL` (ou `UPSTASH_REDIS_REST_URL`)
+- `KV_REST_API_TOKEN` (ou `UPSTASH_REDIS_REST_TOKEN`)
+- optionnel: `KV_REST_API_READ_ONLY_TOKEN`
+
+Optionnel:
+- `AQUAPULSE_USERSTORE_PREFIX` pour changer le prefixe des cles (defaut: `aquapulse:users`)
+
+---
+
 ## Routes Principales
 
 | URL | Page
