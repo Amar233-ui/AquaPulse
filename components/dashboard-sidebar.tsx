@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -20,10 +20,11 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AquaPulseLogo } from "@/components/aquapulse-logo"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 interface NavItem {
   label: string
@@ -70,6 +71,8 @@ export function DashboardSidebar({
   onToggleCollapse: () => void
 }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   useEffect(() => {
     onMobileClose()
@@ -77,6 +80,22 @@ export function DashboardSidebar({
 
   const navItems = role === "citoyen" ? citizenNav : role === "operateur" ? operatorNav : adminNav
   const roleLabel = role === "citoyen" ? "Citoyen" : role === "operateur" ? "Operateur" : "Administrateur"
+
+  async function handleLogout() {
+    if (isLoggingOut) {
+      return
+    }
+
+    setIsLoggingOut(true)
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+    } finally {
+      onMobileClose()
+      router.push("/auth/login")
+      router.refresh()
+      setIsLoggingOut(false)
+    }
+  }
 
   return (
     <>
@@ -146,6 +165,28 @@ export function DashboardSidebar({
               <span>{"Retour a l'accueil"}</span>
             </Link>
           )}
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="mt-2 flex w-full items-center justify-center rounded-lg px-2 py-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Se deconnecter"
+              title="Se deconnecter"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>{isLoggingOut ? "Deconnexion..." : "Se deconnecter"}</span>
+            </button>
+          )}
         </div>
       </aside>
 
@@ -209,6 +250,15 @@ export function DashboardSidebar({
               <Home className="h-4 w-4" />
               <span>{"Retour a l'accueil"}</span>
             </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>{isLoggingOut ? "Deconnexion..." : "Se deconnecter"}</span>
+            </button>
           </div>
         </aside>
       </div>
