@@ -116,6 +116,7 @@ export default function AlertesPage() {
             <CardTitle className="text-base font-semibold">Liste des Alertes</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -149,6 +150,7 @@ export default function AlertesPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -24,7 +24,13 @@ const ROLE_LABEL: Record<UserRole, string> = {
   admin: "Admin",
 }
 
-export function DashboardHeader({ title }: { title: string }) {
+export function DashboardHeader({
+  title,
+  onMenuClick,
+}: {
+  title: string
+  onMenuClick: () => void
+}) {
   const router = useRouter()
   const [showSearch, setShowSearch] = useState(false)
   const [auth, setAuth] = useState<AuthHeaderState>({ user: null, notifications: 0 })
@@ -63,7 +69,7 @@ export function DashboardHeader({ title }: { title: string }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md lg:px-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="lg:hidden">
+        <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5" />
           <span className="sr-only">Menu</span>
         </Button>
@@ -76,7 +82,7 @@ export function DashboardHeader({ title }: { title: string }) {
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Rechercher..."
-              className="h-9 w-48 pl-8 text-sm lg:w-64"
+              className="h-9 w-40 pl-8 text-sm sm:w-48 lg:w-64"
               onBlur={() => setShowSearch(false)}
               autoFocus
             />
@@ -107,7 +113,7 @@ export function DashboardHeader({ title }: { title: string }) {
             <p className="text-sm font-medium text-foreground">{auth.user?.name ?? "Utilisateur"}</p>
             <p className="text-xs text-muted-foreground">{auth.user ? ROLE_LABEL[auth.user.role] : "role"}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
+          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleLogout}>
             Deconnexion
           </Button>
         </div>

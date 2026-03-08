@@ -86,6 +86,7 @@ export default function SimulationsPage() {
             </Button>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -127,6 +128,7 @@ export default function SimulationsPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
