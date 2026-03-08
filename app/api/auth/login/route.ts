@@ -2,6 +2,7 @@
 
 import { verifyPassword } from "@/lib/auth/password"
 import { findUserByEmail } from "@/lib/server/data-service"
+import { normalizeServerError } from "@/lib/server/errors"
 import { attachSessionCookie, touchUserLogin } from "@/lib/server/session"
 
 export async function POST(request: Request) {
@@ -45,7 +46,15 @@ export async function POST(request: Request) {
     await attachSessionCookie(response, authUser)
 
     return response
-  } catch {
-    return NextResponse.json({ error: "Connexion impossible" }, { status: 500 })
+  } catch (error) {
+    const normalized = normalizeServerError(error)
+    console.error("[auth/login]", normalized.detail ?? error)
+    return NextResponse.json(
+      {
+        error: normalized.message,
+        detail: process.env.NODE_ENV === "production" ? undefined : normalized.detail,
+      },
+      { status: normalized.status },
+    )
   }
 }

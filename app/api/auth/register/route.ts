@@ -3,6 +3,7 @@
 import { hashPassword } from "@/lib/auth/password"
 import { normalizeRoleLabel } from "@/lib/auth/roles"
 import { createUser, findUserByEmail } from "@/lib/server/data-service"
+import { normalizeServerError } from "@/lib/server/errors"
 import { attachSessionCookie } from "@/lib/server/session"
 
 export async function POST(request: Request) {
@@ -52,7 +53,15 @@ export async function POST(request: Request) {
     await attachSessionCookie(response, user)
 
     return response
-  } catch {
-    return NextResponse.json({ error: "Impossible de creer le compte" }, { status: 500 })
+  } catch (error) {
+    const normalized = normalizeServerError(error)
+    console.error("[auth/register]", normalized.detail ?? error)
+    return NextResponse.json(
+      {
+        error: normalized.message,
+        detail: process.env.NODE_ENV === "production" ? undefined : normalized.detail,
+      },
+      { status: normalized.status },
+    )
   }
 }

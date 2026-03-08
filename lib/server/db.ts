@@ -6,8 +6,22 @@ import { DatabaseSync } from "node:sqlite"
 
 import { hashPassword } from "@/lib/auth/password"
 
-const DATA_DIR = path.join(process.cwd(), "data")
-const DB_PATH = path.join(DATA_DIR, "aquapulse.db")
+function resolveDatabasePath(): string {
+  const configuredPath = process.env.AQUAPULSE_DB_PATH?.trim()
+  if (configuredPath) {
+    return configuredPath
+  }
+
+  // Serverless platforms (ex: Vercel) only allow writes in /tmp.
+  if (process.env.VERCEL === "1") {
+    return "/tmp/aquapulse.db"
+  }
+
+  return path.join(process.cwd(), "data", "aquapulse.db")
+}
+
+const DB_PATH = resolveDatabasePath()
+const DATA_DIR = DB_PATH === ":memory:" ? "" : path.dirname(DB_PATH)
 
 declare global {
   var aquapulseDb: DatabaseSync | undefined
@@ -23,6 +37,10 @@ type SeedUser = {
 }
 
 function ensureDataDirectory() {
+  if (DB_PATH === ":memory:") {
+    return
+  }
+
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true })
   }
