@@ -1,8 +1,8 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { FormEvent, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { FormEvent, useEffect, useState } from "react"
 
 import { AquaPulseLogo } from "@/components/aquapulse-logo"
 import { Button } from "@/components/ui/button"
@@ -19,14 +19,17 @@ const ROLE_HOME: Record<UserRole, string> = {
 
 export default function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [nextPath, setNextPath] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const nextPath = useMemo(() => searchParams.get("next"), [searchParams])
+  useEffect(() => {
+    const next = new URLSearchParams(window.location.search).get("next")
+    setNextPath(next)
+  }, [])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -50,7 +53,7 @@ export default function LoginPage() {
         throw new Error(json.error ?? "Connexion echouee")
       }
 
-      if (nextPath && nextPath.startsWith("/")) {
+      if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
         router.push(nextPath)
       } else {
         router.push(ROLE_HOME[json.user.role])
