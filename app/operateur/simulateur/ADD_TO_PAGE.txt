@@ -1,0 +1,9 @@
+1) Ajoute cet import dans app/operateur/simulateur/page.tsx :
+
+import { DakarMap } from "@/components/map/dakar-map"
+
+2) Ajoute ce bloc tout en haut du JSX principal, juste apres l'ouverture du DashboardLayout :
+
+<div className="mb-6">
+  <DakarMap mode="simulation" />
+</div>

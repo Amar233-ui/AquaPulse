@@ -1,0 +1,61 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "P1", "name": "Conduite - Plateau → Colobane", "kind": "pipe" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-17.4449, 14.6927],
+          [-17.4478, 14.7002],
+          [-17.4540, 14.7070]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "P2", "name": "Conduite - Colobane → Liberté", "kind": "pipe" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-17.4540, 14.7070],
+          [-17.4630, 14.7160],
+          [-17.4755, 14.7240]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "P3", "name": "Conduite - Plateau → Médina", "kind": "pipe" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-17.4449, 14.6927],
+          [-17.4518, 14.6898],
+          [-17.4598, 14.6870]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "N1", "name": "Réservoir (Plateau)", "kind": "node", "nodeType": "tank" },
+      "geometry": { "type": "Point", "coordinates": [-17.4449, 14.6927] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "N2", "name": "Jonction (Colobane)", "kind": "node", "nodeType": "junction" },
+      "geometry": { "type": "Point", "coordinates": [-17.4540, 14.7070] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "N3", "name": "Pompe (Liberté)", "kind": "node", "nodeType": "pump" },
+      "geometry": { "type": "Point", "coordinates": [-17.4755, 14.7240] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "N4", "name": "Jonction (Médina)", "kind": "node", "nodeType": "junction" },
+      "geometry": { "type": "Point", "coordinates": [-17.4598, 14.6870] }
+    }
+  ]
+}

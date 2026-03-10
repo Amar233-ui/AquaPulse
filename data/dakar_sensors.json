@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "S1", "type": "acoustic", "nodeId": "N2", "label": "Capteur acoustique" },
+      "geometry": { "type": "Point", "coordinates": [-17.4540, 14.7070] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "S2", "type": "turbidity", "nodeId": "N4", "label": "Capteur turbidité" },
+      "geometry": { "type": "Point", "coordinates": [-17.4598, 14.6870] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "S3", "type": "ph", "nodeId": "N3", "label": "Capteur pH" },
+      "geometry": { "type": "Point", "coordinates": [-17.4755, 14.7240] }
+    }
+  ]
+}
