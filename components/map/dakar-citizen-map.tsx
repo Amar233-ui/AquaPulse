@@ -201,6 +201,7 @@ export function DakarCitizenMap() {
 
       {/* ── Panel gauche — info citoyen ── */}
       <div className="citizen-panel" style={{
+        background: "#0f172a",
         position: "absolute", left: 12, top: 12, width: 220, zIndex: 30,
         padding: 14, display: "flex", flexDirection: "column", gap: 14,
         maxHeight: "calc(100% - 24px)", overflowY: "auto",
