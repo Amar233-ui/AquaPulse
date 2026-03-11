@@ -146,7 +146,7 @@ export function DakarCitizenMap() {
   const alertes = ALERTS.filter(a => a.severity === "Alerte").length
 
   return (
-    <div style={{ position: "relative", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ position: "relative", fontFamily: "system-ui, sans-serif", zIndex: 0 }}>
       <style>{`
         @keyframes citizen-pulse {
           0%, 100% { transform: scale(1); opacity: 0.6; }
@@ -156,11 +156,10 @@ export function DakarCitizenMap() {
         .citizen-scroll::-webkit-scrollbar-track { background: transparent; }
         .citizen-scroll::-webkit-scrollbar-thumb { background: #22d3ee44; border-radius: 2px; }
         .citizen-panel {
-          background: rgba(10,15,28,0.92);
+          background: rgb(10,15,28);
           border: 1px solid rgba(34,211,238,0.15);
           border-radius: 10px;
-          backdrop-filter: blur(12px);
-          box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+          box-shadow: 0 4px 24px rgba(0,0,0,0.6);
         }
         .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; }
         .leaflet-tooltip::before { display: none !important; }
@@ -185,8 +184,8 @@ export function DakarCitizenMap() {
       <button
         onClick={() => setPanelOpen(p => !p)}
         style={{
-          position: "absolute", left: 12, top: 12, zIndex: 1001,
-          background: "rgba(10,15,28,0.92)", border: "1px solid rgba(34,211,238,0.3)",
+          position: "absolute", left: 12, top: 12, zIndex: 10,
+          background: "rgb(10,15,28)", border: "1px solid rgba(34,211,238,0.3)",
           borderRadius: 8, padding: "8px 12px", cursor: "pointer",
           color: "#22d3ee", fontSize: 12, fontWeight: 700,
           display: "flex", alignItems: "center", gap: 8,
@@ -200,7 +199,7 @@ export function DakarCitizenMap() {
 
       {/* ── Panel gauche — info citoyen ── */}
       <div className="citizen-panel" style={{
-        position: "absolute", left: 12, top: 12, width: 220, zIndex: 1000,
+        position: "absolute", left: 12, top: 12, width: 220, zIndex: 10,
         padding: 14, display: "flex", flexDirection: "column", gap: 14,
         maxHeight: "calc(100% - 24px)", overflowY: "auto",
       }} data-panel="left" className={panelOpen ? "panel-open" : ""}>
@@ -296,7 +295,7 @@ export function DakarCitizenMap() {
       {/* ── Panel droite — détail incident ou quartier ── */}
       {(selectedAlert || selectedZone) && (
         <div className="citizen-panel" style={{
-          position: "absolute", right: 12, top: 12, width: 240, zIndex: 1000, padding: 14
+          position: "absolute", right: 12, top: 12, width: 240, zIndex: 10, padding: 14
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em" }}>
@@ -403,7 +402,7 @@ export function DakarCitizenMap() {
 
       {/* ── Légende bas droite ── */}
       <div className="citizen-panel" style={{
-        position: "absolute", bottom: 40, right: 12, zIndex: 1000, padding: "10px 14px"
+        position: "absolute", bottom: 40, right: 12, zIndex: 10, padding: "10px 14px"
       }}>
         <p style={{ color: "#94a3b8", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", marginBottom: 8 }}>LÉGENDE</p>
         {[
