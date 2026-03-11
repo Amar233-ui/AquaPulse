@@ -32,6 +32,7 @@ export function DakarCitizenMap() {
   const [clock, setClock] = useState("")
   const [selectedAlert, setSelectedAlert] = useState<any>(null)
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
 
   // ── Clock ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -163,6 +164,15 @@ export function DakarCitizenMap() {
         }
         .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; }
         .leaflet-tooltip::before { display: none !important; }
+        @media (max-width: 768px) {
+          .lg-hide { display: flex !important; }
+          [data-panel="left"] { display: none !important; }
+          [data-panel="left"].panel-open { display: flex !important; top: 56px !important; width: calc(100% - 24px) !important; max-height: 70vh !important; }
+        }
+        @media (min-width: 769px) {
+          .lg-hide { display: none !important; }
+          [data-panel="left"] { display: flex !important; }
+        }
       `}</style>
 
       {/* Carte */}
@@ -171,12 +181,29 @@ export function DakarCitizenMap() {
         style={{ width: "100%", height: "600px", borderRadius: "12px", overflow: "hidden" }}
       />
 
+      {/* ── Bouton toggle mobile ── */}
+      <button
+        onClick={() => setPanelOpen(p => !p)}
+        style={{
+          position: "absolute", left: 12, top: 12, zIndex: 1001,
+          background: "rgba(10,15,28,0.92)", border: "1px solid rgba(34,211,238,0.3)",
+          borderRadius: 8, padding: "8px 12px", cursor: "pointer",
+          color: "#22d3ee", fontSize: 12, fontWeight: 700,
+          display: "flex", alignItems: "center", gap: 8,
+          backdropFilter: "blur(12px)",
+        }}
+        className="lg-hide"
+      >
+        <span>{panelOpen ? "✕" : "☰"}</span>
+        <span>{panelOpen ? "Fermer" : `Infos ${critiques > 0 ? "🔴" : alertes > 0 ? "⚠️" : "✅"}`}</span>
+      </button>
+
       {/* ── Panel gauche — info citoyen ── */}
       <div className="citizen-panel" style={{
         position: "absolute", left: 12, top: 12, width: 220, zIndex: 1000,
         padding: 14, display: "flex", flexDirection: "column", gap: 14,
-        maxHeight: "calc(100% - 24px)", overflowY: "auto"
-      }}>
+        maxHeight: "calc(100% - 24px)", overflowY: "auto",
+      }} data-panel="left" className={panelOpen ? "panel-open" : ""}>
 
         {/* Statut global */}
         <div>
