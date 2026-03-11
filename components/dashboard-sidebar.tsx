@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -34,10 +34,8 @@ interface NavItem {
 
 const citizenNav: NavItem[] = [
   { label: "Accueil", href: "/citoyen", icon: Home },
-  { label: "Etat du Reseau", href: "/citoyen/reseau", icon: Activity },
-  { label: "Qualite de l'Eau", href: "/citoyen/qualite", icon: Droplets },
-  { label: "Signaler", href: "/citoyen/signaler", icon: MessageSquareWarning },
   { label: "Carte Interactive", href: "/citoyen/carte", icon: Map },
+  { label: "Signaler", href: "/citoyen/signaler", icon: MessageSquareWarning },
 ]
 
 const operatorNav: NavItem[] = [
