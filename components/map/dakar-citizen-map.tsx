@@ -156,7 +156,7 @@ export function DakarCitizenMap() {
         .citizen-scroll::-webkit-scrollbar-track { background: transparent; }
         .citizen-scroll::-webkit-scrollbar-thumb { background: #22d3ee44; border-radius: 2px; }
         .citizen-panel {
-          background: rgb(10,15,28);
+          background: #0f172a;
           border: 1px solid rgba(34,211,238,0.15);
           border-radius: 10px;
           box-shadow: 0 4px 24px rgba(0,0,0,0.6);
@@ -187,7 +187,7 @@ export function DakarCitizenMap() {
         onClick={() => setPanelOpen(p => !p)}
         style={{
           position: "absolute", left: 12, top: 12, zIndex: 30,
-          background: "rgb(10,15,28)", border: "1px solid rgba(34,211,238,0.3)",
+          background: "#0f172a", border: "1px solid rgba(34,211,238,0.3)",
           borderRadius: 8, padding: "8px 12px", cursor: "pointer",
           color: "#22d3ee", fontSize: 12, fontWeight: 700,
           display: "flex", alignItems: "center", gap: 8,
