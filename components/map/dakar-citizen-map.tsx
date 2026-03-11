@@ -174,17 +174,19 @@ export function DakarCitizenMap() {
         }
       `}</style>
 
-      {/* Carte */}
-      <div
-        ref={mapContainerRef}
-        style={{ width: "100%", height: "600px", borderRadius: "12px", overflow: "hidden" }}
-      />
+      {/* Carte — isolée dans son propre contexte d'empilement */}
+      <div style={{ position: "relative", isolation: "isolate" }}>
+        <div
+          ref={mapContainerRef}
+          style={{ width: "100%", height: "600px", borderRadius: "12px", overflow: "hidden" }}
+        />
+      </div>
 
       {/* ── Bouton toggle mobile ── */}
       <button
         onClick={() => setPanelOpen(p => !p)}
         style={{
-          position: "absolute", left: 12, top: 12, zIndex: 10,
+          position: "absolute", left: 12, top: 12, zIndex: 30,
           background: "rgb(10,15,28)", border: "1px solid rgba(34,211,238,0.3)",
           borderRadius: 8, padding: "8px 12px", cursor: "pointer",
           color: "#22d3ee", fontSize: 12, fontWeight: 700,
@@ -199,7 +201,7 @@ export function DakarCitizenMap() {
 
       {/* ── Panel gauche — info citoyen ── */}
       <div className="citizen-panel" style={{
-        position: "absolute", left: 12, top: 12, width: 220, zIndex: 10,
+        position: "absolute", left: 12, top: 12, width: 220, zIndex: 30,
         padding: 14, display: "flex", flexDirection: "column", gap: 14,
         maxHeight: "calc(100% - 24px)", overflowY: "auto",
       }} data-panel="left" className={panelOpen ? "panel-open" : ""}>
@@ -295,7 +297,7 @@ export function DakarCitizenMap() {
       {/* ── Panel droite — détail incident ou quartier ── */}
       {(selectedAlert || selectedZone) && (
         <div className="citizen-panel" style={{
-          position: "absolute", right: 12, top: 12, width: 240, zIndex: 10, padding: 14
+          position: "absolute", right: 12, top: 12, width: 240, zIndex: 30, padding: 14
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em" }}>
@@ -402,7 +404,7 @@ export function DakarCitizenMap() {
 
       {/* ── Légende bas droite ── */}
       <div className="citizen-panel" style={{
-        position: "absolute", bottom: 40, right: 12, zIndex: 10, padding: "10px 14px"
+        position: "absolute", bottom: 40, right: 12, zIndex: 30, padding: "10px 14px"
       }}>
         <p style={{ color: "#94a3b8", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", marginBottom: 8 }}>LÉGENDE</p>
         {[
