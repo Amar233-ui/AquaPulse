@@ -19,27 +19,29 @@ export function HeroSection() {
 
       <div className="relative mx-auto max-w-7xl px-4 pb-24 pt-32 sm:px-6 lg:px-8 lg:pb-32 lg:pt-44">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-4 py-1.5 text-sm text-primary-foreground/80 backdrop-blur-sm">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-            Plateforme de Jumeau Numerique
+
+          {/* Badge */}
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm text-accent backdrop-blur-sm">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+            Plateforme de Jumeau Numérique — Dakar, Sénégal
           </div>
 
           <h1 className="text-balance text-4xl font-bold tracking-tight text-primary-foreground sm:text-5xl lg:text-6xl">
-            {"AquaPulse \u2013 Gestion Resiliente de l'Eau par l'IA"}
+            AquaPulse — Gestion Résiliente de l'Eau par l'IA
           </h1>
 
-          <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-primary-foreground/70">
-            {"Jumeau numerique intelligent pour une gestion resiliente de l'eau. Diagnostic IA, maintenance predictive et surveillance en temps reel de votre infrastructure hydrique."}
+          <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-primary-foreground/80">
+            Jumeau numérique intelligent pour une gestion résiliente de l'eau. Détection de fuites, maintenance prédictive et surveillance en temps réel de votre infrastructure hydrique.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button asChild size="lg" className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button asChild size="lg" className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90 font-semibold">
               <Link href="/auth/login">
-                {"Decouvrir la Plateforme"}
+                Découvrir la Plateforme
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild variant="outline" size="lg" className="gap-2 border-primary-foreground/20 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
+            <Button asChild variant="outline" size="lg" className="gap-2 border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
               <Link href="/auth/register">
                 <Play className="h-4 w-4" />
                 Espace Citoyen
@@ -48,16 +50,18 @@ export function HeroSection() {
           </div>
         </div>
 
-        <div className="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-6 sm:grid-cols-4">
+        {/* Stats — fond opaque pour lisibilité garantie */}
+        <div className="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { value: "99.7%", label: "Disponibilite" },
-            { value: "2,400+", label: "Capteurs IoT" },
-            { value: "-35%", label: "Fuites Detectees" },
-            { value: "24/7", label: "Surveillance" },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
+            { value: "99.7%",  label: "Disponibilité",       sub: "uptime réseau" },
+            { value: "2 400+", label: "Capteurs IoT",         sub: "déployés" },
+            { value: "−35%",   label: "Fuites Détectées",     sub: "vs méthode manuelle" },
+            { value: "24/7",   label: "Surveillance",         sub: "temps réel" },
+          ].map(stat => (
+            <div key={stat.label} className="rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 px-4 py-4 text-center">
               <p className="text-2xl font-bold text-accent sm:text-3xl">{stat.value}</p>
-              <p className="mt-1 text-sm text-primary-foreground/60">{stat.label}</p>
+              <p className="mt-1 text-sm font-semibold text-primary-foreground">{stat.label}</p>
+              <p className="text-xs text-primary-foreground/60 mt-0.5">{stat.sub}</p>
             </div>
           ))}
         </div>

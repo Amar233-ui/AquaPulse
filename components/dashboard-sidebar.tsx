@@ -30,29 +30,30 @@ interface NavItem {
   label: string
   href: string
   icon: React.ElementType
+  badge?: number
 }
 
 const citizenNav: NavItem[] = [
-  { label: "Accueil", href: "/citoyen", icon: Home },
-  { label: "Carte Interactive", href: "/citoyen/carte", icon: Map },
-  { label: "Signaler", href: "/citoyen/signaler", icon: MessageSquareWarning },
+  { label: "Mon Eau",           href: "/citoyen",          icon: Droplets },
+  { label: "Carte Interactive", href: "/citoyen/carte",    icon: Map },
+  { label: "Signaler",          href: "/citoyen/signaler", icon: MessageSquareWarning },
 ]
 
 const operatorNav: NavItem[] = [
-  { label: "Tableau de Bord", href: "/operateur", icon: LayoutDashboard },
-  { label: "Alertes", href: "/operateur/alertes", icon: AlertTriangle },
-  { label: "Maintenance", href: "/operateur/maintenance", icon: Wrench },
-  { label: "Capteurs", href: "/operateur/capteurs", icon: Radio },
-  { label: "Jumeau Numerique", href: "/operateur/carte", icon: Map },
-  { label: "Simulateur", href: "/operateur/simulateur", icon: FlaskConical },
+  { label: "Tableau de Bord",   href: "/operateur",              icon: LayoutDashboard },
+  { label: "Alertes",           href: "/operateur/alertes",      icon: AlertTriangle, badge: 4 },
+  { label: "Maintenance",       href: "/operateur/maintenance",  icon: Wrench },
+  { label: "Capteurs",          href: "/operateur/capteurs",     icon: Radio },
+  { label: "Jumeau Numérique",  href: "/operateur/carte",        icon: Map },
+  { label: "Simulateur",        href: "/operateur/simulateur",   icon: FlaskConical },
 ]
 
 const adminNav: NavItem[] = [
-  { label: "Vue Systeme", href: "/admin", icon: BarChart3 },
-  { label: "Utilisateurs", href: "/admin/utilisateurs", icon: Users },
-  { label: "Capteurs IoT", href: "/admin/capteurs", icon: Cpu },
-  { label: "Simulations", href: "/admin/simulations", icon: FlaskConical },
-  { label: "Parametres", href: "/admin/parametres", icon: Settings },
+  { label: "Vue Système",     href: "/admin",                  icon: BarChart3 },
+  { label: "Utilisateurs",   href: "/admin/utilisateurs",     icon: Users },
+  { label: "Capteurs IoT",   href: "/admin/capteurs",         icon: Cpu },
+  { label: "Simulations",    href: "/admin/simulations",      icon: FlaskConical },
+  { label: "Paramètres",     href: "/admin/parametres",       icon: Settings },
 ]
 
 export function DashboardSidebar({
@@ -77,189 +78,119 @@ export function DashboardSidebar({
   }, [pathname])
 
   const navItems = role === "citoyen" ? citizenNav : role === "operateur" ? operatorNav : adminNav
-  const roleLabel = role === "citoyen" ? "Citoyen" : role === "operateur" ? "Operateur" : "Administrateur"
+  const roleLabel = role === "citoyen" ? "Citoyen" : role === "operateur" ? "Opérateur" : "Administrateur"
+  const roleColor = role === "citoyen" ? "text-teal-400" : role === "operateur" ? "text-blue-400" : "text-purple-400"
+  const roleBg = role === "citoyen" ? "bg-teal-500/10" : role === "operateur" ? "bg-blue-500/10" : "bg-purple-500/10"
 
-  async function handleLogout() {
-    if (isLoggingOut) {
-      return
-    }
-
+  const handleLogout = async () => {
     setIsLoggingOut(true)
     try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
-    } finally {
-      onMobileClose()
-      router.push("/auth/login")
-      router.refresh()
-      setIsLoggingOut(false)
-    }
+      await fetch("/api/auth/logout", { method: "POST" })
+    } catch {}
+    router.push("/auth/login")
   }
 
   return (
     <>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={onMobileClose}
+        />
+      )}
+
+      {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 hidden h-screen flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300 lg:flex",
-          collapsed ? "w-16" : "w-64",
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300",
+          collapsed ? "w-16" : "w-60",
+          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-          {!collapsed && (
-            <Link href="/">
-              <AquaPulseLogo size="sm" className="text-sidebar-foreground" />
-            </Link>
-          )}
-          {collapsed && (
-            <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Droplets className="h-4 w-4 text-primary-foreground" />
-            </div>
-          )}
-          <button
-            onClick={onToggleCollapse}
-            className="hidden rounded-md p-1 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground lg:block"
-            aria-label={collapsed ? "Ouvrir le menu" : "Fermer le menu"}
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
+        {/* Header */}
+        <div className={cn(
+          "flex h-16 items-center border-b border-sidebar-border px-4 shrink-0",
+          collapsed ? "justify-center" : "justify-between"
+        )}>
+          {!collapsed && <AquaPulseLogo size="sm" />}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onToggleCollapse}
+              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+              aria-label={collapsed ? "Développer" : "Réduire"}
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={onMobileClose}
+              className="flex lg:hidden h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
+        {/* Role badge */}
         {!collapsed && (
-          <div className="px-4 py-3">
-            <span className="text-xs font-medium uppercase tracking-wider text-sidebar-foreground/50">
-              {roleLabel}
-            </span>
+          <div className={cn("mx-3 mt-3 mb-1 rounded-lg px-3 py-2", roleBg)}>
+            <p className={cn("text-xs font-semibold tracking-wide uppercase", roleColor)}>{roleLabel}</p>
           </div>
         )}
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-2">
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
           {navItems.map((item) => {
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href) && item.href !== "/citoyen" && item.href !== "/operateur" && item.href !== "/admin")
             return (
               <Link
-                key={item.href}
+                key={item.label}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all group relative",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 )}
                 title={collapsed ? item.label : undefined}
               >
-                <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-sidebar-primary" : "")} />
-                {!collapsed && <span>{item.label}</span>}
+                <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-sidebar-primary" : "")} />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.badge && item.badge > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive-foreground/80 px-1.5 text-[10px] font-bold text-white">
+                        {item.badge}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && item.badge && item.badge > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive-foreground/80 text-[9px] font-bold text-white">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             )
           })}
         </nav>
 
-        <div className="border-t border-sidebar-border p-3">
-          {!collapsed && (
-            <Link
-              href="/"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <Home className="h-4 w-4" />
-              <span>{"Retour a l'accueil"}</span>
-            </Link>
-          )}
-          {collapsed ? (
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="mt-2 flex w-full items-center justify-center rounded-lg px-2 py-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              aria-label="Se deconnecter"
-              title="Se deconnecter"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>{isLoggingOut ? "Deconnexion..." : "Se deconnecter"}</span>
-            </button>
-          )}
+        {/* Footer logout */}
+        <div className="border-t border-sidebar-border p-2 shrink-0">
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "text-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-destructive-foreground disabled:opacity-50"
+            )}
+            title={collapsed ? "Déconnexion" : undefined}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>{isLoggingOut ? "Déconnexion…" : "Déconnexion"}</span>}
+          </button>
         </div>
       </aside>
-
-      <div className={cn("fixed inset-0 z-50 lg:hidden", mobileOpen ? "pointer-events-auto" : "pointer-events-none")}>
-        <button
-          className={cn("absolute inset-0 bg-black/40 transition-opacity", mobileOpen ? "opacity-100" : "opacity-0")}
-          onClick={onMobileClose}
-          aria-label="Fermer le menu"
-        />
-        <aside
-          className={cn(
-            "absolute left-0 top-0 flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300",
-            mobileOpen ? "translate-x-0" : "-translate-x-full",
-          )}
-        >
-          <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-            <Link href="/" onClick={onMobileClose}>
-              <AquaPulseLogo size="sm" className="text-sidebar-foreground" />
-            </Link>
-            <button
-              className="rounded-md p-1 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              onClick={onMobileClose}
-              aria-label="Fermer"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="px-4 py-3">
-            <span className="text-xs font-medium uppercase tracking-wider text-sidebar-foreground/50">{roleLabel}</span>
-          </div>
-
-          <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-2">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onMobileClose}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-primary"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                  )}
-                >
-                  <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-sidebar-primary" : "")} />
-                  <span>{item.label}</span>
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div className="border-t border-sidebar-border p-3">
-            <Link
-              href="/"
-              onClick={onMobileClose}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <Home className="h-4 w-4" />
-              <span>{"Retour a l'accueil"}</span>
-            </Link>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>{isLoggingOut ? "Deconnexion..." : "Se deconnecter"}</span>
-            </button>
-          </div>
-        </aside>
-      </div>
     </>
   )
 }

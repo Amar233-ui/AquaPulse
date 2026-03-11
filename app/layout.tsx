@@ -1,12 +1,13 @@
 import "leaflet/dist/leaflet.css"
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import { ThemeProvider } from "@/components/theme-provider"
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'AquaPulse - Jumeau Numerique Intelligent pour la Gestion de l\'Eau',
-  description: 'AquaPulse est une plateforme SaaS de jumeau numerique intelligent dediee a la gestion resiliente de l\'eau. Diagnostic IA, maintenance predictive, surveillance en temps reel.',
-  generator: 'v0.app',
+  title: 'AquaPulse — Jumeau Numérique Intelligent pour la Gestion de l\'Eau',
+  description: 'AquaPulse est une plateforme SaaS de jumeau numérique intelligent dédiée à la gestion résiliente de l\'eau. Diagnostic IA, maintenance prédictive, surveillance en temps réel.',
+  generator: 'AquaPulse',
   icons: {
     icon: [
       {
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#1a3a5c',
+  themeColor: '#0d1f2d',
   width: 'device-width',
   initialScale: 1,
 }
@@ -38,9 +39,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        {children}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

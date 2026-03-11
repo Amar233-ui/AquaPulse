@@ -9,13 +9,15 @@ export function DashboardLayout({
   children,
   role,
   title,
+  fullscreen = false,
 }: {
   children: React.ReactNode
   role: "citoyen" | "operateur" | "admin"
   title: string
+  fullscreen?: boolean
 }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(fullscreen) // auto-collapse sur les pages carte/sim
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,11 +26,13 @@ export function DashboardLayout({
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
         collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed((previous) => !previous)}
+        onToggleCollapse={() => setCollapsed(prev => !prev)}
       />
-      <div className={cn("transition-all duration-300", collapsed ? "lg:pl-16" : "lg:pl-64")}>
+      <div className={cn("transition-all duration-300", collapsed ? "lg:pl-16" : "lg:pl-60")}>
         <DashboardHeader title={title} onMenuClick={() => setMobileSidebarOpen(true)} />
-        <main className="p-4 lg:p-6">{children}</main>
+        <main className={cn(fullscreen ? "p-3 lg:p-4" : "p-4 lg:p-6")}>
+          {children}
+        </main>
       </div>
     </div>
   )

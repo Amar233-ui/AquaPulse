@@ -1,11 +1,12 @@
 "use client"
 
-import { Bell, Search, User, Menu } from "lucide-react"
+import { Bell, Search, User, Menu, Sun, Moon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import type { UserRole } from "@/lib/types"
 
 interface AuthHeaderState {
@@ -19,9 +20,9 @@ interface AuthHeaderState {
 }
 
 const ROLE_LABEL: Record<UserRole, string> = {
-  citoyen: "Citoyen",
-  operateur: "Operateur",
-  admin: "Admin",
+  citoyen:   "Citoyen",
+  operateur: "Opérateur",
+  admin:     "Admin",
 }
 
 export function DashboardHeader({
@@ -32,32 +33,26 @@ export function DashboardHeader({
   onMenuClick: () => void
 }) {
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   const [showSearch, setShowSearch] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [auth, setAuth] = useState<AuthHeaderState>({ user: null, notifications: 0 })
+
+  // Avoid hydration mismatch for theme icon
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     let cancelled = false
-
     async function loadAuth() {
       try {
         const response = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
-        if (!response.ok) {
-          return
-        }
-
+        if (!response.ok) return
         const json = (await response.json()) as AuthHeaderState
-        if (!cancelled) {
-          setAuth(json)
-        }
-      } catch {
-        // ignore auth header errors on render
-      }
+        if (!cancelled) setAuth(json)
+      } catch {}
     }
-
     void loadAuth()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
   async function handleLogout() {
@@ -65,6 +60,8 @@ export function DashboardHeader({
     router.push("/auth/login")
     router.refresh()
   }
+
+  const isDark = theme === "dark"
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md lg:px-6">
@@ -76,7 +73,8 @@ export function DashboardHeader({
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
+        {/* Recherche */}
         {showSearch ? (
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -94,14 +92,34 @@ export function DashboardHeader({
           </Button>
         )}
 
+        {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5 text-muted-foreground" />
-          <Badge className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center p-0 text-[10px]">
-            {auth.notifications}
-          </Badge>
+          {auth.notifications > 0 && (
+            <Badge className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center p-0 text-[10px]">
+              {auth.notifications}
+            </Badge>
+          )}
           <span className="sr-only">Notifications</span>
         </Button>
 
+        {/* Toggle dark / light */}
+        {mounted && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            title={isDark ? "Passer en mode clair" : "Passer en mode sombre"}
+          >
+            {isDark
+              ? <Sun className="h-5 w-5 text-amber-400" />
+              : <Moon className="h-5 w-5 text-slate-500" />
+            }
+            <span className="sr-only">Changer le thème</span>
+          </Button>
+        )}
+
+        {/* Profil + déconnexion */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="rounded-full">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
@@ -110,11 +128,11 @@ export function DashboardHeader({
             <span className="sr-only">Profil</span>
           </Button>
           <div className="hidden text-right lg:block">
-            <p className="text-sm font-medium text-foreground">{auth.user?.name ?? "Utilisateur"}</p>
-            <p className="text-xs text-muted-foreground">{auth.user ? ROLE_LABEL[auth.user.role] : "role"}</p>
+            <p className="text-sm font-semibold text-foreground">{auth.user?.name ?? "Utilisateur"}</p>
+            <p className="text-xs text-muted-foreground">{auth.user ? ROLE_LABEL[auth.user.role] : ""}</p>
           </div>
           <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleLogout}>
-            Deconnexion
+            Déconnexion
           </Button>
         </div>
       </div>
