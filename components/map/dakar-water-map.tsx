@@ -1,26 +1,16 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState } from "react"
 
-// ── Réseau 200 conduites + 41 capteurs ───────────────────────────────────────
-const NODES = [{"id":"R1","type":"reservoir","name":"Château d'Eau Plateau","lat":14.6937,"lng":-17.4441,"zone":"Plateau","capacity_m3":50000},{"id":"R2","type":"reservoir","name":"Réservoir Médina","lat":14.6891,"lng":-17.4512,"zone":"Médina","capacity_m3":35000},{"id":"R3","type":"reservoir","name":"Réservoir Pikine","lat":14.7512,"lng":-17.3891,"zone":"Pikine","capacity_m3":45000},{"id":"P1","type":"pump","name":"Station Pompage Fann","lat":14.6978,"lng":-17.4623,"zone":"Fann","flow_m3h":1200},{"id":"P2","type":"pump","name":"Station Pompage HLM","lat":14.7089,"lng":-17.4401,"zone":"HLM","flow_m3h":900},{"id":"P3","type":"pump","name":"Station Pompage Parcelles","lat":14.7334,"lng":-17.4123,"zone":"Parcelles Assainies","flow_m3h":1100},{"id":"V1","type":"valve","name":"Vanne Médina Nord","lat":14.6945,"lng":-17.4478,"zone":"Médina","open_pct":100},{"id":"V2","type":"valve","name":"Vanne Grand Dakar","lat":14.7123,"lng":-17.4289,"zone":"Grand Dakar","open_pct":75},{"id":"V3","type":"valve","name":"Vanne Guédiawaye","lat":14.7445,"lng":-17.4034,"zone":"Guédiawaye","open_pct":100},{"id":"J1","type":"junction","name":"Nœud Central Plateau","lat":14.6912,"lng":-17.4467,"zone":"Plateau"},{"id":"J2","type":"junction","name":"Nœud HLM-Médina","lat":14.7034,"lng":-17.4356,"zone":"HLM"},{"id":"J3","type":"junction","name":"Nœud Pikine Est","lat":14.7489,"lng":-17.3956,"zone":"Pikine"}]
-const INTER_NODES = [{"id":"N1","zone":"Plateau","lat":14.694115414387662,"lng":-17.451749892447772},{"id":"N2","zone":"Plateau","lat":14.691200234546953,"lng":-17.44976789261851},{"id":"N3","zone":"Plateau","lat":14.694891769713312,"lng":-17.445233005125772},{"id":"N4","zone":"Plateau","lat":14.696137436541639,"lng":-17.451130611673705},{"id":"N5","zone":"Plateau","lat":14.692375374557482,"lng":-17.45170202780562},{"id":"N6","zone":"Plateau","lat":14.690749103798428,"lng":-17.446946447118965},{"id":"N7","zone":"Plateau","lat":14.68921228775747,"lng":-17.450011623493133},{"id":"N8","zone":"Plateau","lat":14.694199075502235,"lng":-17.446550585193968},{"id":"N9","zone":"Plateau","lat":14.690763524976326,"lng":-17.44610734316124},{"id":"N10","zone":"Plateau","lat":14.695475443653422,"lng":-17.45193501240322},{"id":"N11","zone":"Médina","lat":14.689140734762828,"lng":-17.451216745445105},{"id":"N12","zone":"Médina","lat":14.685881753615625,"lng":-17.456100684501692},{"id":"N13","zone":"Médina","lat":14.690200491505447,"lng":-17.454470649093984},{"id":"N14","zone":"Médina","lat":14.684149220903661,"lng":-17.456629552608497},{"id":"N15","zone":"Médina","lat":14.689432460564431,"lng":-17.452066465717696},{"id":"N16","zone":"Médina","lat":14.68914989791292,"lng":-17.450932413919755},{"id":"N17","zone":"Médina","lat":14.687253596640183,"lng":-17.448741958124184},{"id":"N18","zone":"Médina","lat":14.686149740640458,"lng":-17.45253163431854},{"id":"N19","zone":"Médina","lat":14.68930583264977,"lng":-17.451933322228722},{"id":"N20","zone":"Médina","lat":14.689531948302175,"lng":-17.45230383069269},{"id":"N21","zone":"Fann","lat":14.701432002853505,"lng":-17.466633404930757},{"id":"N22","zone":"Fann","lat":14.69809528792956,"lng":-17.464684896291185},{"id":"N23","zone":"Fann","lat":14.697058543838464,"lng":-17.465137672909112},{"id":"N24","zone":"Fann","lat":14.697207010005867,"lng":-17.46477621117512},{"id":"N25","zone":"Fann","lat":14.70094979110985,"lng":-17.46408134256824},{"id":"N26","zone":"Fann","lat":14.699091266769818,"lng":-17.46532394375383},{"id":"N27","zone":"Fann","lat":14.698368844754343,"lng":-17.4595067632983},{"id":"N28","zone":"Fann","lat":14.701036247696726,"lng":-17.462126951954666},{"id":"N29","zone":"Fann","lat":14.697697970537385,"lng":-17.461166985616398},{"id":"N30","zone":"Fann","lat":14.697643817456333,"lng":-17.46396435646594},{"id":"N31","zone":"HLM","lat":14.709916186805092,"lng":-17.43860000240146},{"id":"N32","zone":"HLM","lat":14.706455597950196,"lng":-17.438153857490104},{"id":"N33","zone":"HLM","lat":14.708742815361518,"lng":-17.43724000088454},{"id":"N34","zone":"HLM","lat":14.703832384575712,"lng":-17.44467899756096},{"id":"N35","zone":"HLM","lat":14.704523624384473,"lng":-17.442322591240245},{"id":"N36","zone":"HLM","lat":14.70368786274869,"lng":-17.43557090285665},{"id":"N37","zone":"HLM","lat":14.709010941011782,"lng":-17.441853221192016},{"id":"N38","zone":"HLM","lat":14.707243509322359,"lng":-17.441043680989395},{"id":"N39","zone":"HLM","lat":14.709316380717924,"lng":-17.440411481474126},{"id":"N40","zone":"HLM","lat":14.704119041331984,"lng":-17.442533724923063},{"id":"N41","zone":"Grand Dakar","lat":14.712552313207468,"lng":-17.43237258391477},{"id":"N42","zone":"Grand Dakar","lat":14.712761273912012,"lng":-17.426021771163974},{"id":"N43","zone":"Grand Dakar","lat":14.711094604546263,"lng":-17.432806792408428},{"id":"N44","zone":"Grand Dakar","lat":14.716477838458456,"lng":-17.429904737063236},{"id":"N45","zone":"Grand Dakar","lat":14.708318184709563,"lng":-17.434528836245754},{"id":"N46","zone":"Grand Dakar","lat":14.708486842173155,"lng":-17.42872553958297},{"id":"N47","zone":"Grand Dakar","lat":14.714628714279266,"lng":-17.430778400332002},{"id":"N48","zone":"Grand Dakar","lat":14.708071749355367,"lng":-17.431183807134936},{"id":"N49","zone":"Grand Dakar","lat":14.71646509242216,"lng":-17.42970885654901},{"id":"N50","zone":"Grand Dakar","lat":14.716239705398522,"lng":-17.426392202977656},{"id":"N51","zone":"Parcelles Assainies","lat":14.728114810219429,"lng":-17.412351338167678},{"id":"N52","zone":"Parcelles Assainies","lat":14.734817103690267,"lng":-17.414556356035092},{"id":"N53","zone":"Parcelles Assainies","lat":14.730668251899527,"lng":-17.413308458417042},{"id":"N54","zone":"Parcelles Assainies","lat":14.72911552173596,"lng":-17.41578281699197},{"id":"N55","zone":"Parcelles Assainies","lat":14.732537237063292,"lng":-17.409554208869746},{"id":"N56","zone":"Parcelles Assainies","lat":14.736758529403783,"lng":-17.417839331390987},{"id":"N57","zone":"Parcelles Assainies","lat":14.733005861130504,"lng":-17.41885617743364},{"id":"N58","zone":"Parcelles Assainies","lat":14.737126278393449,"lng":-17.410553777161958},{"id":"N59","zone":"Parcelles Assainies","lat":14.730984447914487,"lng":-17.41333260606161},{"id":"N60","zone":"Parcelles Assainies","lat":14.734089702114382,"lng":-17.419165928777403},{"id":"N61","zone":"Parcelles Assainies","lat":14.735625108000752,"lng":-17.414527451638563},{"id":"N62","zone":"Parcelles Assainies","lat":14.735786264786306,"lng":-17.414635755933656},{"id":"N63","zone":"Parcelles Assainies","lat":14.72800571896128,"lng":-17.417110127315944},{"id":"N64","zone":"Parcelles Assainies","lat":14.728194767423858,"lng":-17.409850816604823},{"id":"N65","zone":"Parcelles Assainies","lat":14.736787218778232,"lng":-17.411020013647665},{"id":"N66","zone":"Pikine","lat":14.748690169504831,"lng":-17.398631122502586},{"id":"N67","zone":"Pikine","lat":14.755536115190448,"lng":-17.38529575832053},{"id":"N68","zone":"Pikine","lat":14.746027841424814,"lng":-17.39221014305025},{"id":"N69","zone":"Pikine","lat":14.745830550221621,"lng":-17.38809096752114},{"id":"N70","zone":"Pikine","lat":14.754190013151684,"lng":-17.397574128032502},{"id":"N71","zone":"Pikine","lat":14.750703388537184,"lng":-17.391252946097577},{"id":"N72","zone":"Pikine","lat":14.74818067954728,"lng":-17.38641350438372},{"id":"N73","zone":"Pikine","lat":14.75007765528241,"lng":-17.396323026918367},{"id":"N74","zone":"Pikine","lat":14.751471553065352,"lng":-17.38855103396365},{"id":"N75","zone":"Pikine","lat":14.747413812760676,"lng":-17.394824255630486},{"id":"N76","zone":"Pikine","lat":14.75694179227993,"lng":-17.389751829135406},{"id":"N77","zone":"Pikine","lat":14.750257201006974,"lng":-17.391736362384467},{"id":"N78","zone":"Pikine","lat":14.746452050350419,"lng":-17.396129539944525},{"id":"N79","zone":"Pikine","lat":14.749057026745769,"lng":-17.390675369223143},{"id":"N80","zone":"Pikine","lat":14.747761376791159,"lng":-17.396196739233226},{"id":"N81","zone":"Guédiawaye","lat":14.73970993086009,"lng":-17.40342676451276},{"id":"N82","zone":"Guédiawaye","lat":14.74128941783811,"lng":-17.40013495984393},{"id":"N83","zone":"Guédiawaye","lat":14.747596354002537,"lng":-17.41014971180134},{"id":"N84","zone":"Guédiawaye","lat":14.74138004634369,"lng":-17.402972266660445},{"id":"N85","zone":"Guédiawaye","lat":14.741142368073705,"lng":-17.4094122578153},{"id":"N86","zone":"Guédiawaye","lat":14.748355142405806,"lng":-17.4041474828801},{"id":"N87","zone":"Guédiawaye","lat":14.743726710263118,"lng":-17.40158456690851},{"id":"N88","zone":"Guédiawaye","lat":14.747074969977666,"lng":-17.40871508102766},{"id":"N89","zone":"Guédiawaye","lat":14.739969308142287,"lng":-17.405827385811126},{"id":"N90","zone":"Guédiawaye","lat":14.7432357862302,"lng":-17.40539570398356},{"id":"N91","zone":"Guédiawaye","lat":14.746290758494599,"lng":-17.40291962543248},{"id":"N92","zone":"Guédiawaye","lat":14.74884165211366,"lng":-17.409818985546178},{"id":"N93","zone":"Guédiawaye","lat":14.743026212821022,"lng":-17.40692836873526},{"id":"N94","zone":"Guédiawaye","lat":14.747616725363528,"lng":-17.408016123992958},{"id":"N95","zone":"Guédiawaye","lat":14.740902089084408,"lng":-17.405616637426004}]
-const PIPES = [{"id":"PIPE-01","from":"R1","to":"P1","diameter_mm":400,"length_m":2006,"material":"fonte","zone":"Plateau-Fann"},{"id":"PIPE-02","from":"P1","to":"J1","diameter_mm":350,"length_m":1828,"material":"PVC","zone":"Plateau"},{"id":"PIPE-03","from":"J1","to":"V1","diameter_mm":300,"length_m":385,"material":"PVC","zone":"Médina"},{"id":"PIPE-04","from":"V1","to":"R2","diameter_mm":300,"length_m":702,"material":"fonte","zone":"Médina"},{"id":"PIPE-05","from":"R2","to":"J2","diameter_mm":350,"length_m":2308,"material":"PVC","zone":"HLM"},{"id":"PIPE-06","from":"J1","to":"J2","diameter_mm":250,"length_m":1804,"material":"amiante-ciment","zone":"Grand Dakar","age_years":35,"risk":"high"},{"id":"PIPE-07","from":"J2","to":"P2","diameter_mm":300,"length_m":779,"material":"PVC","zone":"HLM"},{"id":"PIPE-08","from":"P2","to":"V2","diameter_mm":250,"length_m":1260,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-09","from":"V2","to":"P3","diameter_mm":300,"length_m":2943,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-10","from":"P3","to":"V3","diameter_mm":350,"length_m":1559,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-11","from":"V3","to":"R3","diameter_mm":400,"length_m":1706,"material":"acier","zone":"Pikine"},{"id":"PIPE-12","from":"R3","to":"J3","diameter_mm":350,"length_m":743,"material":"PVC","zone":"Pikine"},{"id":"PIPE-13","from":"J3","to":"J2","diameter_mm":250,"length_m":6629,"material":"fonte","zone":"Pikine-HLM","age_years":28,"risk":"medium"},{"id":"PIPE-014","from":"N1","to":"J1","diameter_mm":100,"length_m":631,"material":"PEHD","zone":"Plateau","age_years":34,"risk":"high"},{"id":"PIPE-015","from":"N2","to":"R1","diameter_mm":200,"length_m":669,"material":"PVC","zone":"Plateau"},{"id":"PIPE-016","from":"N3","to":"R1","diameter_mm":200,"length_m":180,"material":"PEHD","zone":"Plateau"},{"id":"PIPE-017","from":"N4","to":"R1","diameter_mm":100,"length_m":802,"material":"PVC","zone":"Plateau"},{"id":"PIPE-018","from":"N5","to":"J1","diameter_mm":100,"length_m":553,"material":"PEHD","zone":"Plateau"},{"id":"PIPE-019","from":"N6","to":"J1","diameter_mm":100,"length_m":57,"material":"fonte","zone":"Plateau"},{"id":"PIPE-020","from":"N7","to":"R1","diameter_mm":125,"length_m":807,"material":"PEHD","zone":"Plateau"},{"id":"PIPE-021","from":"N8","to":"J1","diameter_mm":250,"length_m":333,"material":"acier","zone":"Plateau"},{"id":"PIPE-022","from":"N9","to":"J1","diameter_mm":100,"length_m":80,"material":"PVC","zone":"Plateau","age_years":23,"risk":"medium"},{"id":"PIPE-023","from":"N10","to":"R1","diameter_mm":80,"length_m":864,"material":"PVC","zone":"Plateau"},{"id":"PIPE-024","from":"N11","to":"V1","diameter_mm":200,"length_m":699,"material":"PVC","zone":"Médina"},{"id":"PIPE-025","from":"N12","to":"R2","diameter_mm":80,"length_m":636,"material":"PEHD","zone":"Médina"},{"id":"PIPE-026","from":"N13","to":"R2","diameter_mm":250,"length_m":372,"material":"PEHD","zone":"Médina","age_years":9},{"id":"PIPE-027","from":"N14","to":"R2","diameter_mm":200,"length_m":801,"material":"PVC","zone":"Médina"},{"id":"PIPE-028","from":"N15","to":"R2","diameter_mm":150,"length_m":100,"material":"acier","zone":"Médina"},{"id":"PIPE-029","from":"N16","to":"V1","diameter_mm":100,"length_m":682,"material":"acier","zone":"Médina"},{"id":"PIPE-030","from":"N17","to":"V1","diameter_mm":100,"length_m":811,"material":"acier","zone":"Médina","age_years":30,"risk":"high"},{"id":"PIPE-031","from":"N18","to":"V1","diameter_mm":80,"length_m":1057,"material":"PVC","zone":"Médina"},{"id":"PIPE-032","from":"N19","to":"V1","diameter_mm":200,"length_m":728,"material":"PVC","zone":"Médina"},{"id":"PIPE-033","from":"N20","to":"R2","diameter_mm":200,"length_m":128,"material":"PVC","zone":"Médina"},{"id":"PIPE-034","from":"N21","to":"P1","diameter_mm":80,"length_m":616,"material":"PVC","zone":"Fann"},{"id":"PIPE-035","from":"N22","to":"P1","diameter_mm":150,"length_m":258,"material":"PEHD","zone":"Fann"},{"id":"PIPE-036","from":"N23","to":"P1","diameter_mm":250,"length_m":316,"material":"fonte","zone":"Fann"},{"id":"PIPE-037","from":"N24","to":"P1","diameter_mm":200,"length_m":274,"material":"PVC","zone":"Fann"},{"id":"PIPE-038","from":"N25","to":"P1","diameter_mm":100,"length_m":399,"material":"PVC","zone":"Fann"},{"id":"PIPE-039","from":"N26","to":"P1","diameter_mm":250,"length_m":355,"material":"fonte","zone":"Fann"},{"id":"PIPE-040","from":"N27","to":"P1","diameter_mm":200,"length_m":306,"material":"PVC","zone":"Fann"},{"id":"PIPE-041","from":"N28","to":"P1","diameter_mm":200,"length_m":360,"material":"fonte","zone":"Fann","age_years":21,"risk":"medium"},{"id":"PIPE-042","from":"N29","to":"P1","diameter_mm":80,"length_m":122,"material":"PVC","zone":"Fann"},{"id":"PIPE-043","from":"N30","to":"P1","diameter_mm":80,"length_m":180,"material":"PVC","zone":"Fann"},{"id":"PIPE-044","from":"N31","to":"J2","diameter_mm":250,"length_m":792,"material":"PVC","zone":"HLM"},{"id":"PIPE-045","from":"N32","to":"P2","diameter_mm":200,"length_m":342,"material":"acier","zone":"HLM"},{"id":"PIPE-046","from":"N33","to":"J2","diameter_mm":80,"length_m":619,"material":"PVC","zone":"HLM"},{"id":"PIPE-047","from":"N34","to":"P2","diameter_mm":125,"length_m":747,"material":"fonte","zone":"HLM"},{"id":"PIPE-048","from":"N35","to":"P2","diameter_mm":80,"length_m":541,"material":"PVC","zone":"HLM"},{"id":"PIPE-049","from":"N36","to":"J2","diameter_mm":80,"length_m":32,"material":"PVC","zone":"HLM"},{"id":"PIPE-050","from":"N37","to":"P2","diameter_mm":250,"length_m":189,"material":"PVC","zone":"HLM"},{"id":"PIPE-051","from":"N38","to":"J2","diameter_mm":150,"length_m":724,"material":"fonte","zone":"HLM"},{"id":"PIPE-052","from":"N39","to":"P2","diameter_mm":100,"length_m":57,"material":"PEHD","zone":"HLM"},{"id":"PIPE-053","from":"N40","to":"P2","diameter_mm":100,"length_m":592,"material":"fonte","zone":"HLM"},{"id":"PIPE-054","from":"N41","to":"V2","diameter_mm":150,"length_m":374,"material":"PEHD","zone":"Grand Dakar","age_years":26,"risk":"medium"},{"id":"PIPE-055","from":"N42","to":"V2","diameter_mm":250,"length_m":313,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-056","from":"N43","to":"V2","diameter_mm":150,"length_m":440,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-057","from":"N44","to":"V2","diameter_mm":150,"length_m":476,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-058","from":"N45","to":"V2","diameter_mm":100,"length_m":749,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-059","from":"N46","to":"V2","diameter_mm":150,"length_m":424,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-060","from":"N47","to":"V2","diameter_mm":125,"length_m":328,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-061","from":"N48","to":"V2","diameter_mm":200,"length_m":530,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-062","from":"N49","to":"V2","diameter_mm":100,"length_m":470,"material":"fonte","zone":"Grand Dakar","age_years":21,"risk":"medium"},{"id":"PIPE-063","from":"N50","to":"V2","diameter_mm":125,"length_m":514,"material":"acier","zone":"Grand Dakar","age_years":32,"risk":"high"},{"id":"PIPE-064","from":"N51","to":"P3","diameter_mm":200,"length_m":587,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-065","from":"N52","to":"P3","diameter_mm":100,"length_m":289,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-066","from":"N53","to":"P3","diameter_mm":80,"length_m":322,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-067","from":"N54","to":"P3","diameter_mm":80,"length_m":605,"material":"acier","zone":"Parcelles Assainies"},{"id":"PIPE-068","from":"N55","to":"P3","diameter_mm":250,"length_m":310,"material":"PEHD","zone":"Parcelles Assainies"},{"id":"PIPE-069","from":"N56","to":"P3","diameter_mm":125,"length_m":702,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-070","from":"N57","to":"P3","diameter_mm":125,"length_m":705,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-071","from":"N58","to":"P3","diameter_mm":100,"length_m":454,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-072","from":"N59","to":"P3","diameter_mm":100,"length_m":290,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-073","from":"N60","to":"P3","diameter_mm":80,"length_m":741,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-074","from":"N61","to":"P3","diameter_mm":150,"length_m":344,"material":"fonte","zone":"Parcelles Assainies","age_years":25,"risk":"medium"},{"id":"PIPE-075","from":"N62","to":"P3","diameter_mm":200,"length_m":365,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-076","from":"N63","to":"P3","diameter_mm":125,"length_m":791,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-077","from":"N64","to":"P3","diameter_mm":250,"length_m":635,"material":"PVC","zone":"Parcelles Assainies","age_years":20,"risk":"medium"},{"id":"PIPE-078","from":"N65","to":"P3","diameter_mm":100,"length_m":400,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-079","from":"N66","to":"R3","diameter_mm":200,"length_m":1060,"material":"PEHD","zone":"Pikine","age_years":35,"risk":"high"},{"id":"PIPE-080","from":"N67","to":"R3","diameter_mm":250,"length_m":631,"material":"fonte","zone":"Pikine"},{"id":"PIPE-081","from":"N68","to":"R3","diameter_mm":150,"length_m":664,"material":"fonte","zone":"Pikine"},{"id":"PIPE-082","from":"N69","to":"J3","diameter_mm":80,"length_m":875,"material":"PEHD","zone":"Pikine","age_years":5},{"id":"PIPE-083","from":"N70","to":"J3","diameter_mm":150,"length_m":624,"material":"PVC","zone":"Pikine","age_years":38,"risk":"high"},{"id":"PIPE-084","from":"N71","to":"R3","diameter_mm":80,"length_m":238,"material":"fonte","zone":"Pikine"},{"id":"PIPE-085","from":"N72","to":"R3","diameter_mm":250,"length_m":442,"material":"fonte","zone":"Pikine"},{"id":"PIPE-086","from":"N73","to":"J3","diameter_mm":150,"length_m":152,"material":"fonte","zone":"Pikine"},{"id":"PIPE-087","from":"N74","to":"J3","diameter_mm":200,"length_m":809,"material":"fonte","zone":"Pikine"},{"id":"PIPE-088","from":"N75","to":"R3","diameter_mm":150,"length_m":744,"material":"fonte","zone":"Pikine"},{"id":"PIPE-089","from":"N76","to":"J3","diameter_mm":250,"length_m":1091,"material":"PVC","zone":"Pikine"},{"id":"PIPE-090","from":"N77","to":"J3","diameter_mm":125,"length_m":441,"material":"fonte","zone":"Pikine"},{"id":"PIPE-091","from":"N78","to":"R3","diameter_mm":100,"length_m":920,"material":"PVC","zone":"Pikine"},{"id":"PIPE-092","from":"N79","to":"J3","diameter_mm":200,"length_m":529,"material":"PVC","zone":"Pikine"},{"id":"PIPE-093","from":"N80","to":"R3","diameter_mm":250,"length_m":852,"material":"PVC","zone":"Pikine","age_years":29,"risk":"medium"},{"id":"PIPE-094","from":"N81","to":"V3","diameter_mm":125,"length_m":532,"material":"fonte","zone":"Guédiawaye","age_years":31,"risk":"high"},{"id":"PIPE-095","from":"N82","to":"V3","diameter_mm":100,"length_m":500,"material":"PEHD","zone":"Guédiawaye"},{"id":"PIPE-096","from":"N83","to":"V3","diameter_mm":200,"length_m":802,"material":"acier","zone":"Guédiawaye"},{"id":"PIPE-097","from":"N84","to":"V3","diameter_mm":200,"length_m":349,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-098","from":"N85","to":"V3","diameter_mm":125,"length_m":745,"material":"PEHD","zone":"Guédiawaye","age_years":27,"risk":"medium"},{"id":"PIPE-099","from":"N86","to":"V3","diameter_mm":150,"length_m":435,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-100","from":"N87","to":"V3","diameter_mm":125,"length_m":213,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-101","from":"N88","to":"V3","diameter_mm":250,"length_m":638,"material":"acier","zone":"Guédiawaye","age_years":26,"risk":"medium"},{"id":"PIPE-102","from":"N89","to":"V3","diameter_mm":150,"length_m":566,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-103","from":"N90","to":"V3","diameter_mm":200,"length_m":256,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-104","from":"N91","to":"V3","diameter_mm":100,"length_m":205,"material":"PEHD","zone":"Guédiawaye","age_years":32,"risk":"high"},{"id":"PIPE-105","from":"N92","to":"V3","diameter_mm":150,"length_m":841,"material":"PVC","zone":"Guédiawaye","age_years":21,"risk":"medium"},{"id":"PIPE-106","from":"N93","to":"V3","diameter_mm":125,"length_m":413,"material":"PEHD","zone":"Guédiawaye"},{"id":"PIPE-107","from":"N94","to":"V3","diameter_mm":150,"length_m":604,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-108","from":"N95","to":"V3","diameter_mm":250,"length_m":465,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-109","from":"N7","to":"N6","diameter_mm":100,"length_m":371,"material":"acier","zone":"Plateau","age_years":27,"risk":"medium"},{"id":"PIPE-110","from":"N6","to":"N9","diameter_mm":80,"length_m":90,"material":"PVC","zone":"Plateau","age_years":7},{"id":"PIPE-111","from":"N9","to":"N2","diameter_mm":200,"length_m":396,"material":"PVC","zone":"Plateau","age_years":6},{"id":"PIPE-112","from":"N2","to":"N5","diameter_mm":250,"length_m":245,"material":"PVC","zone":"Plateau","age_years":35,"risk":"high"},{"id":"PIPE-113","from":"N5","to":"N1","diameter_mm":100,"length_m":193,"material":"fonte","zone":"Plateau"},{"id":"PIPE-114","from":"N1","to":"N8","diameter_mm":125,"length_m":558,"material":"PVC","zone":"Plateau"},{"id":"PIPE-115","from":"N8","to":"N3","diameter_mm":250,"length_m":161,"material":"acier","zone":"Plateau"},{"id":"PIPE-116","from":"N3","to":"N10","diameter_mm":125,"length_m":723,"material":"PVC","zone":"Plateau","age_years":15},{"id":"PIPE-117","from":"N10","to":"N4","diameter_mm":125,"length_m":113,"material":"fonte","zone":"Plateau"},{"id":"PIPE-118","from":"N14","to":"N12","diameter_mm":150,"length_m":201,"material":"fonte","zone":"Médina"},{"id":"PIPE-119","from":"N12","to":"N18","diameter_mm":100,"length_m":384,"material":"PVC","zone":"Médina"},{"id":"PIPE-120","from":"N18","to":"N17","diameter_mm":250,"length_m":425,"material":"PVC","zone":"Médina"},{"id":"PIPE-121","from":"N17","to":"N11","diameter_mm":250,"length_m":338,"material":"fonte","zone":"Médina","age_years":24,"risk":"medium"},{"id":"PIPE-122","from":"N11","to":"N16","diameter_mm":200,"length_m":31,"material":"PEHD","zone":"Médina"},{"id":"PIPE-123","from":"N16","to":"N19","diameter_mm":150,"length_m":109,"material":"acier","zone":"Médina","age_years":39,"risk":"high"},{"id":"PIPE-124","from":"N19","to":"N15","diameter_mm":200,"length_m":20,"material":"acier","zone":"Médina"},{"id":"PIPE-125","from":"N15","to":"N20","diameter_mm":150,"length_m":28,"material":"PEHD","zone":"Médina"},{"id":"PIPE-126","from":"N20","to":"N13","diameter_mm":150,"length_m":244,"material":"PVC","zone":"Médina"},{"id":"PIPE-127","from":"N23","to":"N24","diameter_mm":150,"length_m":42,"material":"acier","zone":"Fann"},{"id":"PIPE-128","from":"N24","to":"N30","diameter_mm":250,"length_m":100,"material":"fonte","zone":"Fann","age_years":16},{"id":"PIPE-129","from":"N30","to":"N29","diameter_mm":125,"length_m":300,"material":"fonte","zone":"Fann"},{"id":"PIPE-130","from":"N29","to":"N22","diameter_mm":200,"length_m":380,"material":"PEHD","zone":"Fann"},{"id":"PIPE-131","from":"N22","to":"N27","diameter_mm":150,"length_m":557,"material":"PEHD","zone":"Fann"},{"id":"PIPE-132","from":"N27","to":"N26","diameter_mm":125,"length_m":630,"material":"PVC","zone":"Fann"},{"id":"PIPE-133","from":"N26","to":"N25","diameter_mm":80,"length_m":246,"material":"PVC","zone":"Fann"},{"id":"PIPE-134","from":"N25","to":"N28","diameter_mm":100,"length_m":210,"material":"PEHD","zone":"Fann"},{"id":"PIPE-135","from":"N28","to":"N21","diameter_mm":200,"length_m":486,"material":"acier","zone":"Fann"},{"id":"PIPE-136","from":"N36","to":"N34","diameter_mm":80,"length_m":978,"material":"fonte","zone":"HLM"},{"id":"PIPE-137","from":"N34","to":"N40","diameter_mm":100,"length_m":233,"material":"fonte","zone":"HLM"},{"id":"PIPE-138","from":"N40","to":"N35","diameter_mm":125,"length_m":50,"material":"PVC","zone":"HLM","age_years":21,"risk":"medium"},{"id":"PIPE-139","from":"N35","to":"N32","diameter_mm":250,"length_m":496,"material":"PVC","zone":"HLM"},{"id":"PIPE-140","from":"N32","to":"N38","diameter_mm":200,"length_m":322,"material":"PVC","zone":"HLM"},{"id":"PIPE-141","from":"N38","to":"N33","diameter_mm":150,"length_m":441,"material":"fonte","zone":"HLM","age_years":31,"risk":"high"},{"id":"PIPE-142","from":"N33","to":"N37","diameter_mm":250,"length_m":496,"material":"fonte","zone":"HLM"},{"id":"PIPE-143","from":"N37","to":"N39","diameter_mm":150,"length_m":158,"material":"fonte","zone":"HLM"},{"id":"PIPE-144","from":"N39","to":"N31","diameter_mm":80,"length_m":206,"material":"PVC","zone":"HLM"},{"id":"PIPE-145","from":"N48","to":"N45","diameter_mm":125,"length_m":360,"material":"acier","zone":"Grand Dakar","age_years":20,"risk":"medium"},{"id":"PIPE-146","from":"N45","to":"N46","diameter_mm":150,"length_m":623,"material":"fonte","zone":"Grand Dakar"},{"id":"PIPE-147","from":"N46","to":"N43","diameter_mm":150,"length_m":525,"material":"acier","zone":"Grand Dakar"},{"id":"PIPE-148","from":"N43","to":"N41","diameter_mm":125,"length_m":168,"material":"acier","zone":"Grand Dakar"},{"id":"PIPE-149","from":"N41","to":"N42","diameter_mm":125,"length_m":682,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-150","from":"N42","to":"N47","diameter_mm":125,"length_m":551,"material":"PVC","zone":"Grand Dakar","age_years":17},{"id":"PIPE-151","from":"N47","to":"N50","diameter_mm":250,"length_m":504,"material":"PVC","zone":"Grand Dakar"},{"id":"PIPE-152","from":"N50","to":"N49","diameter_mm":125,"length_m":357,"material":"acier","zone":"Grand Dakar","age_years":35,"risk":"high"},{"id":"PIPE-153","from":"N49","to":"N44","diameter_mm":200,"length_m":21,"material":"fonte","zone":"Grand Dakar"},{"id":"PIPE-154","from":"N63","to":"N51","diameter_mm":80,"length_m":511,"material":"PEHD","zone":"Parcelles Assainies"},{"id":"PIPE-155","from":"N51","to":"N64","diameter_mm":125,"length_m":269,"material":"PVC","zone":"Parcelles Assainies","age_years":19},{"id":"PIPE-156","from":"N64","to":"N54","diameter_mm":250,"length_m":645,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-157","from":"N54","to":"N53","diameter_mm":80,"length_m":317,"material":"fonte","zone":"Parcelles Assainies","age_years":7},{"id":"PIPE-158","from":"N53","to":"N59","diameter_mm":100,"length_m":35,"material":"acier","zone":"Parcelles Assainies"},{"id":"PIPE-159","from":"N59","to":"N55","diameter_mm":150,"length_m":441,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-160","from":"N55","to":"N57","diameter_mm":200,"length_m":1000,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-161","from":"N57","to":"N60","diameter_mm":150,"length_m":125,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-162","from":"N60","to":"N52","diameter_mm":125,"length_m":501,"material":"PEHD","zone":"Parcelles Assainies","age_years":8},{"id":"PIPE-163","from":"N52","to":"N61","diameter_mm":80,"length_m":90,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-164","from":"N61","to":"N62","diameter_mm":200,"length_m":21,"material":"acier","zone":"Parcelles Assainies"},{"id":"PIPE-165","from":"N62","to":"N56","diameter_mm":100,"length_m":360,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-166","from":"N56","to":"N65","diameter_mm":125,"length_m":732,"material":"PVC","zone":"Parcelles Assainies"},{"id":"PIPE-167","from":"N65","to":"N58","diameter_mm":80,"length_m":63,"material":"fonte","zone":"Parcelles Assainies"},{"id":"PIPE-168","from":"N69","to":"N68","diameter_mm":200,"length_m":443,"material":"fonte","zone":"Pikine"},{"id":"PIPE-169","from":"N68","to":"N78","diameter_mm":100,"length_m":423,"material":"PEHD","zone":"Pikine"},{"id":"PIPE-170","from":"N78","to":"N75","diameter_mm":150,"length_m":176,"material":"fonte","zone":"Pikine"},{"id":"PIPE-171","from":"N75","to":"N80","diameter_mm":200,"length_m":152,"material":"fonte","zone":"Pikine"},{"id":"PIPE-172","from":"N80","to":"N72","diameter_mm":200,"length_m":1051,"material":"PVC","zone":"Pikine"},{"id":"PIPE-173","from":"N72","to":"N66","diameter_mm":250,"length_m":1313,"material":"PVC","zone":"Pikine"},{"id":"PIPE-174","from":"N66","to":"N79","diameter_mm":100,"length_m":855,"material":"acier","zone":"Pikine"},{"id":"PIPE-175","from":"N79","to":"N73","diameter_mm":100,"length_m":617,"material":"PVC","zone":"Pikine","age_years":10},{"id":"PIPE-176","from":"N73","to":"N77","diameter_mm":100,"length_m":493,"material":"PVC","zone":"Pikine","age_years":9},{"id":"PIPE-177","from":"N77","to":"N71","diameter_mm":250,"length_m":72,"material":"fonte","zone":"Pikine"},{"id":"PIPE-178","from":"N71","to":"N74","diameter_mm":80,"length_m":302,"material":"PVC","zone":"Pikine"},{"id":"PIPE-179","from":"N74","to":"N70","diameter_mm":125,"length_m":1014,"material":"acier","zone":"Pikine"},{"id":"PIPE-180","from":"N70","to":"N67","diameter_mm":80,"length_m":1326,"material":"acier","zone":"Pikine"},{"id":"PIPE-181","from":"N67","to":"N76","diameter_mm":250,"length_m":503,"material":"fonte","zone":"Pikine","age_years":21,"risk":"medium"},{"id":"PIPE-182","from":"N81","to":"N89","diameter_mm":100,"length_m":259,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-183","from":"N89","to":"N95","diameter_mm":250,"length_m":106,"material":"PVC","zone":"Guédiawaye","age_years":19},{"id":"PIPE-184","from":"N95","to":"N85","diameter_mm":100,"length_m":408,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-185","from":"N85","to":"N82","diameter_mm":200,"length_m":996,"material":"acier","zone":"Guédiawaye","age_years":24,"risk":"medium"},{"id":"PIPE-186","from":"N82","to":"N84","diameter_mm":125,"length_m":305,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-187","from":"N84","to":"N93","diameter_mm":250,"length_m":462,"material":"fonte","zone":"Guédiawaye","age_years":24,"risk":"medium"},{"id":"PIPE-188","from":"N93","to":"N90","diameter_mm":200,"length_m":166,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-189","from":"N90","to":"N87","diameter_mm":80,"length_m":413,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-190","from":"N87","to":"N91","diameter_mm":250,"length_m":319,"material":"PVC","zone":"Guédiawaye","age_years":32,"risk":"high"},{"id":"PIPE-191","from":"N91","to":"N88","diameter_mm":80,"length_m":628,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-192","from":"N88","to":"N83","diameter_mm":250,"length_m":165,"material":"PEHD","zone":"Guédiawaye","age_years":6},{"id":"PIPE-193","from":"N83","to":"N94","diameter_mm":80,"length_m":229,"material":"PEHD","zone":"Guédiawaye"},{"id":"PIPE-194","from":"N94","to":"N86","diameter_mm":150,"length_m":423,"material":"fonte","zone":"Guédiawaye"},{"id":"PIPE-195","from":"N86","to":"N92","diameter_mm":125,"length_m":611,"material":"PVC","zone":"Guédiawaye"},{"id":"PIPE-196","from":"N10","to":"N17","diameter_mm":150,"length_m":975,"material":"PVC","zone":"Plateau-Médina"},{"id":"PIPE-197","from":"N18","to":"N36","diameter_mm":125,"length_m":2666,"material":"acier","zone":"Médina-HLM"},{"id":"PIPE-198","from":"N32","to":"N43","diameter_mm":250,"length_m":771,"material":"fonte","zone":"HLM-Grand Dakar"},{"id":"PIPE-199","from":"N45","to":"N61","diameter_mm":200,"length_m":3715,"material":"PVC","zone":"Grand Dakar-Parcelles Assainies"},{"id":"PIPE-200","from":"N58","to":"N67","diameter_mm":125,"length_m":3395,"material":"PVC","zone":"Parcelles Assainies-Pikine"}]
-const SENSORS = [{"sensor_id":"S1_acoustic","node_id":"J1","kind":"acoustic","name":"Acoustique Plateau","lat":14.6918,"lng":-17.4459,"zone":"Plateau","value":0.94,"unit":"score","status":"critique"},{"sensor_id":"S2_acoustic","node_id":"J2","kind":"acoustic","name":"Acoustique HLM","lat":14.7028,"lng":-17.4361,"zone":"HLM","value":0.12,"unit":"score","status":"normal"},{"sensor_id":"S3_acoustic","node_id":"J3","kind":"acoustic","name":"Acoustique Pikine","lat":14.7492,"lng":-17.3961,"zone":"Pikine","value":0.08,"unit":"score","status":"normal"},{"sensor_id":"S1_pressure","node_id":"R1","kind":"pressure","name":"Pression Château d'Eau","lat":14.694,"lng":-17.4438,"zone":"Plateau","value":3.4,"unit":"bar","status":"normal"},{"sensor_id":"S2_pressure","node_id":"P1","kind":"pressure","name":"Pression Fann","lat":14.6981,"lng":-17.4619,"zone":"Fann","value":2.1,"unit":"bar","status":"alerte"},{"sensor_id":"S3_pressure","node_id":"V2","kind":"pressure","name":"Pression Grand Dakar","lat":14.712,"lng":-17.4292,"zone":"Grand Dakar","value":1.8,"unit":"bar","status":"critique"},{"sensor_id":"S4_pressure","node_id":"P3","kind":"pressure","name":"Pression Parcelles","lat":14.7337,"lng":-17.412,"zone":"Parcelles Assainies","value":3.2,"unit":"bar","status":"normal"},{"sensor_id":"M1_flow","node_id":"P1","kind":"flow","name":"Débit Fann","lat":14.6975,"lng":-17.4625,"zone":"Fann","value":1360,"unit":"m³/h","status":"alerte"},{"sensor_id":"M2_flow","node_id":"P2","kind":"flow","name":"Débit HLM","lat":14.7086,"lng":-17.4404,"zone":"HLM","value":870,"unit":"m³/h","status":"normal"},{"sensor_id":"M3_flow","node_id":"P3","kind":"flow","name":"Débit Parcelles","lat":14.7331,"lng":-17.4126,"zone":"Parcelles Assainies","value":1050,"unit":"m³/h","status":"normal"},{"sensor_id":"Q1_quality","node_id":"R1","kind":"quality","name":"Qualité Réservoir Nord","lat":14.6934,"lng":-17.4443,"zone":"Plateau","value":7.2,"unit":"pH","status":"normal"},{"sensor_id":"Q2_quality","node_id":"R2","kind":"quality","name":"Qualité Réservoir Médina","lat":14.6888,"lng":-17.4514,"zone":"Médina","value":7.1,"unit":"pH","status":"normal"},{"sensor_id":"R1_level","node_id":"R1","kind":"level","name":"Niveau Château d'Eau","lat":14.6937,"lng":-17.4441,"zone":"Plateau","value":81.3,"unit":"%","status":"normal"},{"sensor_id":"R2_level","node_id":"R2","kind":"level","name":"Niveau Réservoir Médina","lat":14.6891,"lng":-17.4512,"zone":"Médina","value":74.2,"unit":"%","status":"normal"},{"sensor_id":"R3_level","node_id":"R3","kind":"level","name":"Niveau Réservoir Pikine","lat":14.7512,"lng":-17.3891,"zone":"Pikine","value":68.9,"unit":"%","status":"normal"},{"sensor_id":"P1_health","node_id":"P1","kind":"pump_health","name":"Santé Pompe Fann","lat":14.6979,"lng":-17.4622,"zone":"Fann","value":62,"unit":"°C","status":"critique"},{"sensor_id":"P2_health","node_id":"P2","kind":"pump_health","name":"Santé Pompe HLM","lat":14.7091,"lng":-17.4399,"zone":"HLM","value":45,"unit":"°C","status":"normal"},{"sensor_id":"AUTO_001","node_id":"N1","kind":"pressure","name":"Capteur Pressure Plateau 1","lat":14.693652433999008,"lng":-17.45174760129764,"zone":"Plateau","value":3.3,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_002","node_id":"N5","kind":"flow","name":"Capteur Flow Plateau 2","lat":14.692285353177228,"lng":-17.451547246479194,"zone":"Plateau","value":983,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_003","node_id":"N9","kind":"quality","name":"Capteur Quality Plateau 3","lat":14.691115866312892,"lng":-17.445748000977073,"zone":"Plateau","value":7.6,"unit":"pH","status":"alerte"},{"sensor_id":"AUTO_004","node_id":"N13","kind":"acoustic","name":"Capteur Acoustic Médina 4","lat":14.690331652522302,"lng":-17.454049719995204,"zone":"Médina","value":0.76,"unit":"score","status":"normal"},{"sensor_id":"AUTO_005","node_id":"N17","kind":"pressure","name":"Capteur Pressure Médina 5","lat":14.687447597802976,"lng":-17.448338534062135,"zone":"Médina","value":4.0,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_006","node_id":"N21","kind":"flow","name":"Capteur Flow Fann 6","lat":14.701724522327385,"lng":-17.46696342128169,"zone":"Fann","value":917,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_007","node_id":"N25","kind":"pressure","name":"Capteur Pressure Fann 7","lat":14.700703768449262,"lng":-17.46432601586008,"zone":"Fann","value":1.7,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_008","node_id":"N29","kind":"flow","name":"Capteur Flow Fann 8","lat":14.697785542242512,"lng":-17.461028046914038,"zone":"Fann","value":924,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_009","node_id":"N33","kind":"quality","name":"Capteur Quality HLM 9","lat":14.708814738053869,"lng":-17.43716518895436,"zone":"HLM","value":7.5,"unit":"pH","status":"normal"},{"sensor_id":"AUTO_010","node_id":"N37","kind":"acoustic","name":"Capteur Acoustic HLM 10","lat":14.709255609852947,"lng":-17.44230417694124,"zone":"HLM","value":0.66,"unit":"score","status":"normal"},{"sensor_id":"AUTO_011","node_id":"N41","kind":"pressure","name":"Capteur Pressure Grand Dakar 11","lat":14.712688931085474,"lng":-17.432251692751638,"zone":"Grand Dakar","value":3.0,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_012","node_id":"N45","kind":"flow","name":"Capteur Flow Grand Dakar 12","lat":14.708127117593516,"lng":-17.434588013055592,"zone":"Grand Dakar","value":849,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_013","node_id":"N49","kind":"pressure","name":"Capteur Pressure Grand Dakar 13","lat":14.716504500181145,"lng":-17.429237366967797,"zone":"Grand Dakar","value":2.9,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_014","node_id":"N53","kind":"flow","name":"Capteur Flow Parcelles Assainies 14","lat":14.730914811250244,"lng":-17.41346974316324,"zone":"Parcelles Assainies","value":1022,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_015","node_id":"N57","kind":"quality","name":"Capteur Quality Parcelles Assainies 15","lat":14.733473130877805,"lng":-17.41855158978962,"zone":"Parcelles Assainies","value":6.9,"unit":"pH","status":"critique"},{"sensor_id":"AUTO_016","node_id":"N61","kind":"acoustic","name":"Capteur Acoustic Parcelles Assainies 16","lat":14.735709668092404,"lng":-17.414205034337336,"zone":"Parcelles Assainies","value":0.54,"unit":"score","status":"normal"},{"sensor_id":"AUTO_017","node_id":"N65","kind":"pressure","name":"Capteur Pressure Parcelles Assainies 17","lat":14.736508585978306,"lng":-17.411456796606505,"zone":"Parcelles Assainies","value":3.9,"unit":"bar","status":"alerte"},{"sensor_id":"AUTO_018","node_id":"N69","kind":"flow","name":"Capteur Flow Pikine 18","lat":14.745823174840599,"lng":-17.38849377552252,"zone":"Pikine","value":1018,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_019","node_id":"N73","kind":"pressure","name":"Capteur Pressure Pikine 19","lat":14.750319924297177,"lng":-17.396668504015956,"zone":"Pikine","value":3.7,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_020","node_id":"N77","kind":"flow","name":"Capteur Flow Pikine 20","lat":14.750200584093035,"lng":-17.391285807214615,"zone":"Pikine","value":289,"unit":"m³/h","status":"normal"},{"sensor_id":"AUTO_021","node_id":"N81","kind":"quality","name":"Capteur Quality Guédiawaye 21","lat":14.739399739422252,"lng":-17.40380460479367,"zone":"Guédiawaye","value":7.3,"unit":"pH","status":"normal"},{"sensor_id":"AUTO_022","node_id":"N85","kind":"acoustic","name":"Capteur Acoustic Guédiawaye 22","lat":14.74088593697087,"lng":-17.409786333929993,"zone":"Guédiawaye","value":0.64,"unit":"score","status":"normal"},{"sensor_id":"AUTO_023","node_id":"N89","kind":"pressure","name":"Capteur Pressure Guédiawaye 23","lat":14.739616862322228,"lng":-17.405426854775495,"zone":"Guédiawaye","value":2.9,"unit":"bar","status":"normal"},{"sensor_id":"AUTO_024","node_id":"N93","kind":"flow","name":"Capteur Flow Guédiawaye 24","lat":14.742551992970808,"lng":-17.40741350840803,"zone":"Guédiawaye","value":973,"unit":"m³/h","status":"normal"}]
-
-const ALERTS = [
-  {"alert_id":"ALT-001","type":"Fuite","location":"Grand Dakar — J1-J2","severity":"Critique","probability":0.94,"lat":14.7023,"lng":-17.4412,"pipe_id":"PIPE-006","date":"2026-03-04 09:20","status":"En cours","estimated_loss_m3h":85,"description":"Vibrations acoustiques anormales sur canalisation amiante-ciment (35 ans)"},
-  {"alert_id":"ALT-002","type":"Panne pompe","location":"Station Fann — P1","severity":"Critique","probability":0.91,"lat":14.6978,"lng":-17.4623,"pipe_id":null,"date":"2026-03-04 10:10","status":"En cours","estimated_loss_m3h":0,"description":"Surchauffe (62°C) et vibrations anormales"},
-  {"alert_id":"ALT-003","type":"Débit anormal","location":"Canalisation Fann-Plateau","severity":"Alerte","probability":0.78,"lat":14.6955,"lng":-17.453,"pipe_id":"PIPE-001","date":"2026-03-04 09:45","status":"Analyse","estimated_loss_m3h":40,"description":"Débit 15% au-dessus de la normale"},
-  {"alert_id":"ALT-004","type":"Pression basse","location":"Zone Grand Dakar","severity":"Alerte","probability":0.65,"lat":14.7123,"lng":-17.4289,"pipe_id":"PIPE-008","date":"2026-03-04 09:50","status":"Surveillance","estimated_loss_m3h":0,"description":"Pression en baisse continue depuis 2h"}
-]
+const NODES = [{"id": "R1", "type": "reservoir", "name": "Ch\u00e2teau d'Eau Plateau", "lat": 14.693, "lng": -17.445, "zone": "Plateau", "capacity_m3": 50000}, {"id": "R2", "type": "reservoir", "name": "R\u00e9servoir M\u00e9dina", "lat": 14.688, "lng": -17.46, "zone": "M\u00e9dina", "capacity_m3": 35000}, {"id": "R3", "type": "reservoir", "name": "R\u00e9servoir Pikine", "lat": 14.752, "lng": -17.388, "zone": "Pikine", "capacity_m3": 45000}, {"id": "R4", "type": "reservoir", "name": "R\u00e9servoir Parcelles", "lat": 14.733, "lng": -17.412, "zone": "Parcelles Assainies", "capacity_m3": 30000}, {"id": "P1", "type": "pump", "name": "Station Pompage Fann", "lat": 14.7, "lng": -17.463, "zone": "Fann", "flow_m3h": 1200}, {"id": "P2", "type": "pump", "name": "Station Pompage HLM", "lat": 14.71, "lng": -17.443, "zone": "HLM", "flow_m3h": 900}, {"id": "P3", "type": "pump", "name": "Station Pompage Parcelles", "lat": 14.73, "lng": -17.415, "zone": "Parcelles Assainies", "flow_m3h": 1100}, {"id": "P4", "type": "pump", "name": "Station Pompage Gu\u00e9diawaye", "lat": 14.745, "lng": -17.407, "zone": "Gu\u00e9diawaye", "flow_m3h": 800}, {"id": "V1", "type": "valve", "name": "Vanne M\u00e9dina Nord", "lat": 14.694, "lng": -17.452, "zone": "M\u00e9dina", "open_pct": 100}, {"id": "V2", "type": "valve", "name": "Vanne Grand Dakar", "lat": 14.714, "lng": -17.432, "zone": "Grand Dakar", "open_pct": 75}, {"id": "V3", "type": "valve", "name": "Vanne Gu\u00e9diawaye", "lat": 14.742, "lng": -17.405, "zone": "Gu\u00e9diawaye", "open_pct": 100}, {"id": "V4", "type": "valve", "name": "Vanne Rufisque", "lat": 14.718, "lng": -17.37, "zone": "Rufisque", "open_pct": 85}, {"id": "J1", "type": "junction", "name": "N\u0153ud Central Plateau", "lat": 14.69, "lng": -17.449, "zone": "Plateau"}, {"id": "J2", "type": "junction", "name": "N\u0153ud HLM-M\u00e9dina", "lat": 14.707, "lng": -17.438, "zone": "HLM"}, {"id": "J3", "type": "junction", "name": "N\u0153ud Pikine Est", "lat": 14.75, "lng": -17.392, "zone": "Pikine"}, {"id": "J4", "type": "junction", "name": "N\u0153ud Parcelles-Gu\u00e9diawaye", "lat": 14.738, "lng": -17.41, "zone": "Parcelles Assainies"}, {"id": "J5", "type": "junction", "name": "N\u0153ud Grand Dakar Sud", "lat": 14.72, "lng": -17.425, "zone": "Grand Dakar"}]
+const INTER_NODES = [{"id": "N1", "zone": "Plateau", "lat": 14.694067, "lng": -17.454375}, {"id": "N2", "zone": "Plateau", "lat": 14.686051, "lng": -17.44942}, {"id": "N3", "zone": "Plateau", "lat": 14.696202, "lng": -17.438083}, {"id": "N4", "zone": "Plateau", "lat": 14.699628, "lng": -17.452827}, {"id": "N5", "zone": "Plateau", "lat": 14.689282, "lng": -17.454255}, {"id": "N6", "zone": "Plateau", "lat": 14.68481, "lng": -17.442366}, {"id": "N7", "zone": "Plateau", "lat": 14.680584, "lng": -17.450029}, {"id": "N8", "zone": "Plateau", "lat": 14.694297, "lng": -17.441376}, {"id": "N9", "zone": "Plateau", "lat": 14.68485, "lng": -17.440268}, {"id": "N10", "zone": "Plateau", "lat": 14.697807, "lng": -17.454838}, {"id": "N11", "zone": "M\u00e9dina", "lat": 14.696116, "lng": -17.453132}, {"id": "N12", "zone": "M\u00e9dina", "lat": 14.686805, "lng": -17.462357}, {"id": "N13", "zone": "M\u00e9dina", "lat": 14.699144, "lng": -17.459278}, {"id": "N14", "zone": "M\u00e9dina", "lat": 14.681855, "lng": -17.463356}, {"id": "N15", "zone": "M\u00e9dina", "lat": 14.69695, "lng": -17.454737}, {"id": "N16", "zone": "M\u00e9dina", "lat": 14.696143, "lng": -17.452595}, {"id": "N17", "zone": "M\u00e9dina", "lat": 14.690725, "lng": -17.448457}, {"id": "N18", "zone": "M\u00e9dina", "lat": 14.687571, "lng": -17.455615}, {"id": "N19", "zone": "M\u00e9dina", "lat": 14.696588, "lng": -17.454485}, {"id": "N20", "zone": "M\u00e9dina", "lat": 14.697234, "lng": -17.455185}, {"id": "N21", "zone": "Fann", "lat": 14.706091, "lng": -17.471221}, {"id": "N22", "zone": "Fann", "lat": 14.696558, "lng": -17.46708}, {"id": "N23", "zone": "Fann", "lat": 14.693596, "lng": -17.468043}, {"id": "N24", "zone": "Fann", "lat": 14.69402, "lng": -17.467274}, {"id": "N25", "zone": "Fann", "lat": 14.704714, "lng": -17.465798}, {"id": "N26", "zone": "Fann", "lat": 14.699404, "lng": -17.468438}, {"id": "N27", "zone": "Fann", "lat": 14.69734, "lng": -17.456077}, {"id": "N28", "zone": "Fann", "lat": 14.704961, "lng": -17.461645}, {"id": "N29", "zone": "HLM", "lat": 14.70308, "lng": -17.43823}, {"id": "N30", "zone": "HLM", "lat": 14.702941, "lng": -17.446273}, {"id": "N31", "zone": "HLM", "lat": 14.717811, "lng": -17.44028}, {"id": "N32", "zone": "HLM", "lat": 14.710025, "lng": -17.439254}, {"id": "N33", "zone": "HLM", "lat": 14.715171, "lng": -17.437152}, {"id": "N34", "zone": "HLM", "lat": 14.704123, "lng": -17.454262}, {"id": "N35", "zone": "HLM", "lat": 14.705678, "lng": -17.448842}, {"id": "N36", "zone": "HLM", "lat": 14.703798, "lng": -17.433313}, {"id": "N37", "zone": "Grand Dakar", "lat": 14.721775, "lng": -17.436504}, {"id": "N38", "zone": "Grand Dakar", "lat": 14.717798, "lng": -17.434318}, {"id": "N39", "zone": "Grand Dakar", "lat": 14.722462, "lng": -17.432611}, {"id": "N40", "zone": "Grand Dakar", "lat": 14.710768, "lng": -17.438341}, {"id": "N41", "zone": "Grand Dakar", "lat": 14.716105, "lng": -17.437906}, {"id": "N42", "zone": "Grand Dakar", "lat": 14.716523, "lng": -17.420759}, {"id": "N43", "zone": "Grand Dakar", "lat": 14.713189, "lng": -17.439078}, {"id": "N44", "zone": "Grand Dakar", "lat": 14.723956, "lng": -17.431243}, {"id": "N45", "zone": "Parcelles Assainies", "lat": 14.722, "lng": -17.426775}, {"id": "N46", "zone": "Parcelles Assainies", "lat": 14.722412, "lng": -17.411686}, {"id": "N47", "zone": "Parcelles Assainies", "lat": 14.737426, "lng": -17.417024}, {"id": "N48", "zone": "Parcelles Assainies", "lat": 14.721398, "lng": -17.418078}, {"id": "N49", "zone": "Parcelles Assainies", "lat": 14.741915, "lng": -17.414243}, {"id": "N50", "zone": "Parcelles Assainies", "lat": 14.741364, "lng": -17.40562}, {"id": "N51", "zone": "Parcelles Assainies", "lat": 14.720253, "lng": -17.409261}, {"id": "N52", "zone": "Parcelles Assainies", "lat": 14.734998, "lng": -17.414039}, {"id": "N53", "zone": "Pikine", "lat": 14.744404, "lng": -17.385771}, {"id": "N54", "zone": "Pikine", "lat": 14.740677, "lng": -17.391957}, {"id": "N55", "zone": "Pikine", "lat": 14.748889, "lng": -17.376386}, {"id": "N56", "zone": "Pikine", "lat": 14.75902, "lng": -17.397098}, {"id": "N57", "zone": "Pikine", "lat": 14.750014, "lng": -17.39964}, {"id": "N58", "zone": "Pikine", "lat": 14.759903, "lng": -17.378884}, {"id": "N59", "zone": "Pikine", "lat": 14.745163, "lng": -17.385832}, {"id": "N60", "zone": "Pikine", "lat": 14.752615, "lng": -17.400415}, {"id": "N61", "zone": "Pikine", "lat": 14.7563, "lng": -17.388819}, {"id": "N62", "zone": "Pikine", "lat": 14.756687, "lng": -17.389089}, {"id": "N63", "zone": "Gu\u00e9diawaye", "lat": 14.734013, "lng": -17.411896}, {"id": "N64", "zone": "Gu\u00e9diawaye", "lat": 14.734428, "lng": -17.396773}, {"id": "N65", "zone": "Gu\u00e9diawaye", "lat": 14.753332, "lng": -17.399208}, {"id": "N66", "zone": "Gu\u00e9diawaye", "lat": 14.740765, "lng": -17.418552}, {"id": "N67", "zone": "Gu\u00e9diawaye", "lat": 14.753316, "lng": -17.396326}, {"id": "N68", "zone": "Gu\u00e9diawaye", "lat": 14.735884, "lng": -17.40785}, {"id": "N69", "zone": "Gu\u00e9diawaye", "lat": 14.735523, "lng": -17.400985}, {"id": "N70", "zone": "Gu\u00e9diawaye", "lat": 14.750848, "lng": -17.41679}, {"id": "N71", "zone": "Rufisque", "lat": 14.719506, "lng": -17.368506}, {"id": "N72", "zone": "Rufisque", "lat": 14.715301, "lng": -17.358827}, {"id": "N73", "zone": "Rufisque", "lat": 14.718463, "lng": -17.378646}, {"id": "N74", "zone": "Rufisque", "lat": 14.720786, "lng": -17.363102}, {"id": "N75", "zone": "Rufisque", "lat": 14.714023, "lng": -17.375649}, {"id": "N76", "zone": "Rufisque", "lat": 14.729903, "lng": -17.365504}, {"id": "N77", "zone": "Rufisque", "lat": 14.718762, "lng": -17.369473}, {"id": "N78", "zone": "Rufisque", "lat": 14.71242, "lng": -17.378259}]
+const PIPES = [{"id": "PIPE-01", "from": "R1", "to": "P1", "diameter_mm": 400, "length_m": 2144, "material": "fonte", "zone": "Plateau-Fann"}, {"id": "PIPE-02", "from": "R1", "to": "J1", "diameter_mm": 350, "length_m": 555, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-03", "from": "P1", "to": "J1", "diameter_mm": 300, "length_m": 1910, "material": "PVC", "zone": "Fann-Plateau"}, {"id": "PIPE-04", "from": "J1", "to": "V1", "diameter_mm": 300, "length_m": 555, "material": "PVC", "zone": "Plateau-M\u00e9dina"}, {"id": "PIPE-05", "from": "V1", "to": "R2", "diameter_mm": 300, "length_m": 1110, "material": "fonte", "zone": "M\u00e9dina"}, {"id": "PIPE-06", "from": "R2", "to": "J2", "diameter_mm": 350, "length_m": 3227, "material": "PVC", "zone": "M\u00e9dina-HLM"}, {"id": "PIPE-07", "from": "J1", "to": "J2", "diameter_mm": 250, "length_m": 2248, "material": "amiante-ciment", "zone": "Plateau-HLM", "age_years": 35, "risk": "high"}, {"id": "PIPE-08", "from": "J2", "to": "P2", "diameter_mm": 300, "length_m": 647, "material": "PVC", "zone": "HLM"}, {"id": "PIPE-09", "from": "P2", "to": "V2", "diameter_mm": 250, "length_m": 1299, "material": "PVC", "zone": "HLM-Grand Dakar"}, {"id": "PIPE-10", "from": "V2", "to": "J5", "diameter_mm": 300, "length_m": 1023, "material": "fonte", "zone": "Grand Dakar"}, {"id": "PIPE-11", "from": "J5", "to": "P3", "diameter_mm": 300, "length_m": 1570, "material": "PVC", "zone": "Grand Dakar-Parcelles Assainies"}, {"id": "PIPE-12", "from": "P3", "to": "R4", "diameter_mm": 350, "length_m": 471, "material": "PVC", "zone": "Parcelles Assainies"}, {"id": "PIPE-13", "from": "R4", "to": "J4", "diameter_mm": 300, "length_m": 598, "material": "acier", "zone": "Parcelles Assainies"}, {"id": "PIPE-14", "from": "J4", "to": "P4", "diameter_mm": 300, "length_m": 845, "material": "PVC", "zone": "Parcelles Assainies-Gu\u00e9diawaye"}, {"id": "PIPE-15", "from": "P4", "to": "V3", "diameter_mm": 300, "length_m": 400, "material": "fonte", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-16", "from": "V3", "to": "R3", "diameter_mm": 400, "length_m": 2189, "material": "acier", "zone": "Gu\u00e9diawaye-Pikine"}, {"id": "PIPE-17", "from": "R3", "to": "J3", "diameter_mm": 350, "length_m": 496, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-18", "from": "J3", "to": "J4", "diameter_mm": 250, "length_m": 2401, "material": "fonte", "zone": "Pikine-Parcelles Assainies", "age_years": 28, "risk": "medium"}, {"id": "PIPE-19", "from": "J2", "to": "J5", "diameter_mm": 200, "length_m": 2041, "material": "PVC", "zone": "HLM-Grand Dakar"}, {"id": "PIPE-20", "from": "J5", "to": "J4", "diameter_mm": 200, "length_m": 2601, "material": "PVC", "zone": "Grand Dakar-Parcelles Assainies"}, {"id": "PIPE-21", "from": "V2", "to": "V4", "diameter_mm": 200, "length_m": 6896, "material": "fonte", "zone": "Grand Dakar-Rufisque", "age_years": 22, "risk": "medium"}, {"id": "PIPE-22", "from": "V4", "to": "J3", "diameter_mm": 250, "length_m": 4310, "material": "PVC", "zone": "Rufisque-Pikine"}, {"id": "PIPE-023", "from": "N1", "to": "V1", "diameter_mm": 150, "length_m": 264, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-024", "from": "N1", "to": "N10", "diameter_mm": 125, "length_m": 418, "material": "PEHD", "zone": "Plateau", "age_years": 20, "risk": "medium"}, {"id": "PIPE-025", "from": "N1", "to": "N5", "diameter_mm": 125, "length_m": 531, "material": "acier", "zone": "Plateau", "age_years": 20, "risk": "medium"}, {"id": "PIPE-026", "from": "N2", "to": "J1", "diameter_mm": 100, "length_m": 441, "material": "PEHD", "zone": "Plateau", "age_years": 38, "risk": "high"}, {"id": "PIPE-027", "from": "N2", "to": "N7", "diameter_mm": 100, "length_m": 611, "material": "PVC", "zone": "Plateau", "age_years": 10}, {"id": "PIPE-028", "from": "N2", "to": "N5", "diameter_mm": 80, "length_m": 645, "material": "PVC", "zone": "Plateau", "age_years": 30, "risk": "high"}, {"id": "PIPE-029", "from": "N3", "to": "R1", "diameter_mm": 80, "length_m": 846, "material": "PVC", "zone": "Plateau", "age_years": 25, "risk": "medium"}, {"id": "PIPE-030", "from": "N3", "to": "N8", "diameter_mm": 150, "length_m": 422, "material": "PVC", "zone": "Plateau", "age_years": 30, "risk": "high"}, {"id": "PIPE-031", "from": "N3", "to": "N9", "diameter_mm": 100, "length_m": 1283, "material": "PVC", "zone": "Plateau", "age_years": 30, "risk": "high"}, {"id": "PIPE-032", "from": "N4", "to": "V1", "diameter_mm": 100, "length_m": 631, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-033", "from": "N4", "to": "N10", "diameter_mm": 80, "length_m": 301, "material": "PVC", "zone": "Plateau", "age_years": 30, "risk": "high"}, {"id": "PIPE-034", "from": "N4", "to": "N1", "diameter_mm": 150, "length_m": 641, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-035", "from": "N5", "to": "V1", "diameter_mm": 200, "length_m": 580, "material": "PVC", "zone": "Plateau", "age_years": 12}, {"id": "PIPE-036", "from": "N6", "to": "J1", "diameter_mm": 200, "length_m": 935, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-037", "from": "N6", "to": "N9", "diameter_mm": 125, "length_m": 233, "material": "fonte", "zone": "Plateau", "age_years": 20, "risk": "medium"}, {"id": "PIPE-038", "from": "N6", "to": "N2", "diameter_mm": 125, "length_m": 795, "material": "PEHD", "zone": "Plateau"}, {"id": "PIPE-039", "from": "N7", "to": "J1", "diameter_mm": 150, "length_m": 1051, "material": "PEHD", "zone": "Plateau", "age_years": 18}, {"id": "PIPE-040", "from": "N7", "to": "N6", "diameter_mm": 150, "length_m": 971, "material": "fonte", "zone": "Plateau", "age_years": 10}, {"id": "PIPE-041", "from": "N8", "to": "R1", "diameter_mm": 80, "length_m": 427, "material": "acier", "zone": "Plateau"}, {"id": "PIPE-042", "from": "N8", "to": "N9", "diameter_mm": 80, "length_m": 1056, "material": "PVC", "zone": "Plateau", "age_years": 30, "risk": "high"}, {"id": "PIPE-043", "from": "N9", "to": "R1", "diameter_mm": 200, "length_m": 1046, "material": "fonte", "zone": "Plateau", "age_years": 12}, {"id": "PIPE-044", "from": "N9", "to": "N2", "diameter_mm": 125, "length_m": 1025, "material": "PVC", "zone": "Plateau"}, {"id": "PIPE-045", "from": "N10", "to": "V1", "diameter_mm": 125, "length_m": 527, "material": "fonte", "zone": "Plateau", "age_years": 12}, {"id": "PIPE-046", "from": "N11", "to": "V1", "diameter_mm": 150, "length_m": 266, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-047", "from": "N11", "to": "N16", "diameter_mm": 125, "length_m": 60, "material": "PVC", "zone": "M\u00e9dina", "age_years": 30, "risk": "high"}, {"id": "PIPE-048", "from": "N11", "to": "N19", "diameter_mm": 80, "length_m": 159, "material": "PVC", "zone": "M\u00e9dina", "age_years": 30, "risk": "high"}, {"id": "PIPE-049", "from": "N12", "to": "R2", "diameter_mm": 250, "length_m": 293, "material": "PVC", "zone": "M\u00e9dina", "age_years": 18}, {"id": "PIPE-050", "from": "N12", "to": "N14", "diameter_mm": 125, "length_m": 561, "material": "PVC", "zone": "M\u00e9dina"}, {"id": "PIPE-051", "from": "N12", "to": "N18", "diameter_mm": 100, "length_m": 753, "material": "fonte", "zone": "M\u00e9dina"}, {"id": "PIPE-052", "from": "N13", "to": "P1", "diameter_mm": 200, "length_m": 424, "material": "PEHD", "zone": "M\u00e9dina", "age_years": 18}, {"id": "PIPE-053", "from": "N13", "to": "N20", "diameter_mm": 100, "length_m": 501, "material": "PVC", "zone": "M\u00e9dina", "age_years": 10}, {"id": "PIPE-054", "from": "N13", "to": "N15", "diameter_mm": 150, "length_m": 560, "material": "fonte", "zone": "M\u00e9dina", "age_years": 10}, {"id": "PIPE-055", "from": "N14", "to": "R2", "diameter_mm": 80, "length_m": 777, "material": "PVC", "zone": "M\u00e9dina"}, {"id": "PIPE-056", "from": "N14", "to": "N18", "diameter_mm": 125, "length_m": 1068, "material": "PVC", "zone": "M\u00e9dina", "age_years": 20, "risk": "medium"}, {"id": "PIPE-057", "from": "N15", "to": "V1", "diameter_mm": 125, "length_m": 447, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-058", "from": "N15", "to": "N19", "diameter_mm": 125, "length_m": 49, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-059", "from": "N15", "to": "N20", "diameter_mm": 150, "length_m": 59, "material": "PVC", "zone": "M\u00e9dina", "age_years": 20, "risk": "medium"}, {"id": "PIPE-060", "from": "N16", "to": "V1", "diameter_mm": 80, "length_m": 247, "material": "PVC", "zone": "M\u00e9dina"}, {"id": "PIPE-061", "from": "N16", "to": "N19", "diameter_mm": 80, "length_m": 216, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-062", "from": "N17", "to": "J1", "diameter_mm": 200, "length_m": 101, "material": "PVC", "zone": "M\u00e9dina", "age_years": 25, "risk": "medium"}, {"id": "PIPE-063", "from": "N17", "to": "N16", "diameter_mm": 150, "length_m": 757, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-064", "from": "N17", "to": "N11", "diameter_mm": 125, "length_m": 792, "material": "fonte", "zone": "M\u00e9dina"}, {"id": "PIPE-065", "from": "N18", "to": "R2", "diameter_mm": 125, "length_m": 489, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-066", "from": "N18", "to": "N17", "diameter_mm": 80, "length_m": 868, "material": "fonte", "zone": "M\u00e9dina"}, {"id": "PIPE-067", "from": "N19", "to": "V1", "diameter_mm": 200, "length_m": 398, "material": "PVC", "zone": "M\u00e9dina", "age_years": 32, "risk": "high"}, {"id": "PIPE-068", "from": "N19", "to": "N20", "diameter_mm": 100, "length_m": 106, "material": "PEHD", "zone": "M\u00e9dina"}, {"id": "PIPE-069", "from": "N20", "to": "V1", "diameter_mm": 100, "length_m": 504, "material": "acier", "zone": "M\u00e9dina"}, {"id": "PIPE-070", "from": "N21", "to": "P1", "diameter_mm": 100, "length_m": 1136, "material": "PVC", "zone": "Fann"}, {"id": "PIPE-071", "from": "N21", "to": "N25", "diameter_mm": 150, "length_m": 621, "material": "PEHD", "zone": "Fann", "age_years": 10}, {"id": "PIPE-072", "from": "N21", "to": "N26", "diameter_mm": 125, "length_m": 804, "material": "PEHD", "zone": "Fann"}, {"id": "PIPE-073", "from": "N22", "to": "P1", "diameter_mm": 150, "length_m": 593, "material": "PEHD", "zone": "Fann"}, {"id": "PIPE-074", "from": "N22", "to": "N24", "diameter_mm": 150, "length_m": 283, "material": "PEHD", "zone": "Fann"}, {"id": "PIPE-075", "from": "N22", "to": "N23", "diameter_mm": 150, "length_m": 346, "material": "fonte", "zone": "Fann"}, {"id": "PIPE-076", "from": "N23", "to": "P1", "diameter_mm": 100, "length_m": 905, "material": "PEHD", "zone": "Fann", "age_years": 18}, {"id": "PIPE-077", "from": "N23", "to": "N24", "diameter_mm": 100, "length_m": 97, "material": "acier", "zone": "Fann"}, {"id": "PIPE-078", "from": "N24", "to": "P1", "diameter_mm": 125, "length_m": 816, "material": "PEHD", "zone": "Fann", "age_years": 25, "risk": "medium"}, {"id": "PIPE-079", "from": "N25", "to": "P1", "diameter_mm": 125, "length_m": 608, "material": "fonte", "zone": "Fann"}, {"id": "PIPE-080", "from": "N25", "to": "N28", "diameter_mm": 150, "length_m": 462, "material": "PVC", "zone": "Fann", "age_years": 30, "risk": "high"}, {"id": "PIPE-081", "from": "N26", "to": "P1", "diameter_mm": 80, "length_m": 607, "material": "PVC", "zone": "Fann", "age_years": 25, "risk": "medium"}, {"id": "PIPE-082", "from": "N26", "to": "N22", "diameter_mm": 100, "length_m": 350, "material": "PVC", "zone": "Fann", "age_years": 10}, {"id": "PIPE-083", "from": "N26", "to": "N24", "diameter_mm": 80, "length_m": 611, "material": "PVC", "zone": "Fann", "age_years": 10}, {"id": "PIPE-084", "from": "N27", "to": "V1", "diameter_mm": 125, "length_m": 585, "material": "PVC", "zone": "Fann", "age_years": 32, "risk": "high"}, {"id": "PIPE-085", "from": "N27", "to": "N28", "diameter_mm": 150, "length_m": 1048, "material": "PVC", "zone": "Fann", "age_years": 10}, {"id": "PIPE-086", "from": "N27", "to": "N22", "diameter_mm": 80, "length_m": 1224, "material": "acier", "zone": "Fann", "age_years": 30, "risk": "high"}, {"id": "PIPE-087", "from": "N28", "to": "P1", "diameter_mm": 125, "length_m": 571, "material": "PVC", "zone": "Fann", "age_years": 12}, {"id": "PIPE-088", "from": "N28", "to": "N26", "diameter_mm": 80, "length_m": 974, "material": "PVC", "zone": "Fann", "age_years": 20, "risk": "medium"}, {"id": "PIPE-089", "from": "N29", "to": "J2", "diameter_mm": 125, "length_m": 436, "material": "acier", "zone": "HLM", "age_years": 12}, {"id": "PIPE-090", "from": "N29", "to": "N36", "diameter_mm": 125, "length_m": 552, "material": "PVC", "zone": "HLM"}, {"id": "PIPE-091", "from": "N29", "to": "N32", "diameter_mm": 80, "length_m": 779, "material": "PVC", "zone": "HLM", "age_years": 10}, {"id": "PIPE-092", "from": "N30", "to": "P2", "diameter_mm": 200, "length_m": 864, "material": "fonte", "zone": "HLM", "age_years": 18}, {"id": "PIPE-093", "from": "N30", "to": "N35", "diameter_mm": 125, "length_m": 417, "material": "acier", "zone": "HLM", "age_years": 20, "risk": "medium"}, {"id": "PIPE-094", "from": "N30", "to": "N29", "diameter_mm": 100, "length_m": 893, "material": "PEHD", "zone": "HLM", "age_years": 10}, {"id": "PIPE-095", "from": "N31", "to": "P2", "diameter_mm": 250, "length_m": 918, "material": "acier", "zone": "HLM", "age_years": 32, "risk": "high"}, {"id": "PIPE-096", "from": "N31", "to": "N33", "diameter_mm": 125, "length_m": 454, "material": "acier", "zone": "HLM"}, {"id": "PIPE-097", "from": "N31", "to": "N32", "diameter_mm": 80, "length_m": 872, "material": "fonte", "zone": "HLM", "age_years": 30, "risk": "high"}, {"id": "PIPE-098", "from": "N32", "to": "J2", "diameter_mm": 100, "length_m": 363, "material": "acier", "zone": "HLM", "age_years": 18}, {"id": "PIPE-099", "from": "N32", "to": "N33", "diameter_mm": 125, "length_m": 617, "material": "acier", "zone": "HLM", "age_years": 30, "risk": "high"}, {"id": "PIPE-100", "from": "N33", "to": "V2", "diameter_mm": 150, "length_m": 586, "material": "PVC", "zone": "HLM", "age_years": 38, "risk": "high"}, {"id": "PIPE-101", "from": "N34", "to": "P1", "diameter_mm": 200, "length_m": 1072, "material": "acier", "zone": "HLM", "age_years": 12}, {"id": "PIPE-102", "from": "N34", "to": "N35", "diameter_mm": 80, "length_m": 626, "material": "fonte", "zone": "HLM"}, {"id": "PIPE-103", "from": "N34", "to": "N30", "diameter_mm": 125, "length_m": 896, "material": "PVC", "zone": "HLM", "age_years": 30, "risk": "high"}, {"id": "PIPE-104", "from": "N35", "to": "P2", "diameter_mm": 250, "length_m": 807, "material": "fonte", "zone": "HLM", "age_years": 12}, {"id": "PIPE-105", "from": "N36", "to": "J2", "diameter_mm": 100, "length_m": 630, "material": "PEHD", "zone": "HLM", "age_years": 12}, {"id": "PIPE-106", "from": "N36", "to": "N32", "diameter_mm": 80, "length_m": 955, "material": "PEHD", "zone": "HLM"}, {"id": "PIPE-107", "from": "N37", "to": "V2", "diameter_mm": 200, "length_m": 997, "material": "PEHD", "zone": "Grand Dakar", "age_years": 38, "risk": "high"}, {"id": "PIPE-108", "from": "N37", "to": "N39", "diameter_mm": 150, "length_m": 439, "material": "acier", "zone": "Grand Dakar"}, {"id": "PIPE-109", "from": "N37", "to": "N38", "diameter_mm": 100, "length_m": 504, "material": "PVC", "zone": "Grand Dakar", "age_years": 30, "risk": "high"}, {"id": "PIPE-110", "from": "N38", "to": "V2", "diameter_mm": 150, "length_m": 494, "material": "acier", "zone": "Grand Dakar", "age_years": 32, "risk": "high"}, {"id": "PIPE-111", "from": "N38", "to": "N41", "diameter_mm": 100, "length_m": 440, "material": "PVC", "zone": "Grand Dakar"}, {"id": "PIPE-112", "from": "N39", "to": "J5", "diameter_mm": 80, "length_m": 888, "material": "PEHD", "zone": "Grand Dakar"}, {"id": "PIPE-113", "from": "N39", "to": "N44", "diameter_mm": 100, "length_m": 225, "material": "PEHD", "zone": "Grand Dakar", "age_years": 20, "risk": "medium"}, {"id": "PIPE-114", "from": "N40", "to": "J2", "diameter_mm": 80, "length_m": 420, "material": "PVC", "zone": "Grand Dakar", "age_years": 38, "risk": "high"}, {"id": "PIPE-115", "from": "N40", "to": "N43", "diameter_mm": 80, "length_m": 281, "material": "acier", "zone": "Grand Dakar"}, {"id": "PIPE-116", "from": "N40", "to": "N41", "diameter_mm": 150, "length_m": 594, "material": "PVC", "zone": "Grand Dakar"}, {"id": "PIPE-117", "from": "N41", "to": "V2", "diameter_mm": 150, "length_m": 696, "material": "PVC", "zone": "Grand Dakar", "age_years": 25, "risk": "medium"}, {"id": "PIPE-118", "from": "N41", "to": "N43", "diameter_mm": 150, "length_m": 349, "material": "PEHD", "zone": "Grand Dakar", "age_years": 30, "risk": "high"}, {"id": "PIPE-119", "from": "N42", "to": "J5", "diameter_mm": 100, "length_m": 609, "material": "PVC", "zone": "Grand Dakar", "age_years": 38, "risk": "high"}, {"id": "PIPE-120", "from": "N42", "to": "N44", "diameter_mm": 150, "length_m": 1427, "material": "fonte", "zone": "Grand Dakar", "age_years": 20, "risk": "medium"}, {"id": "PIPE-121", "from": "N42", "to": "N39", "diameter_mm": 125, "length_m": 1472, "material": "PEHD", "zone": "Grand Dakar"}, {"id": "PIPE-122", "from": "N43", "to": "P2", "diameter_mm": 250, "length_m": 561, "material": "PEHD", "zone": "Grand Dakar", "age_years": 38, "risk": "high"}, {"id": "PIPE-123", "from": "N44", "to": "J5", "diameter_mm": 150, "length_m": 820, "material": "PVC", "zone": "Grand Dakar", "age_years": 18}, {"id": "PIPE-124", "from": "N44", "to": "N37", "diameter_mm": 100, "length_m": 632, "material": "fonte", "zone": "Grand Dakar", "age_years": 10}, {"id": "PIPE-125", "from": "N45", "to": "J5", "diameter_mm": 125, "length_m": 297, "material": "PVC", "zone": "Parcelles Assainies", "age_years": 25, "risk": "medium"}, {"id": "PIPE-126", "from": "N45", "to": "N48", "diameter_mm": 100, "length_m": 968, "material": "PEHD", "zone": "Parcelles Assainies"}, {"id": "PIPE-127", "from": "N45", "to": "N46", "diameter_mm": 150, "length_m": 1676, "material": "PVC", "zone": "Parcelles Assainies"}, {"id": "PIPE-128", "from": "N46", "to": "P3", "diameter_mm": 250, "length_m": 919, "material": "PEHD", "zone": "Parcelles Assainies"}, {"id": "PIPE-129", "from": "N46", "to": "N51", "diameter_mm": 150, "length_m": 360, "material": "acier", "zone": "Parcelles Assainies"}, {"id": "PIPE-130", "from": "N46", "to": "N48", "diameter_mm": 150, "length_m": 718, "material": "acier", "zone": "Parcelles Assainies", "age_years": 10}, {"id": "PIPE-131", "from": "N47", "to": "R4", "diameter_mm": 100, "length_m": 743, "material": "PEHD", "zone": "Parcelles Assainies"}, {"id": "PIPE-132", "from": "N47", "to": "N52", "diameter_mm": 150, "length_m": 427, "material": "PEHD", "zone": "Parcelles Assainies", "age_years": 20, "risk": "medium"}, {"id": "PIPE-133", "from": "N47", "to": "N49", "diameter_mm": 80, "length_m": 586, "material": "PEHD", "zone": "Parcelles Assainies", "age_years": 30, "risk": "high"}, {"id": "PIPE-134", "from": "N48", "to": "J5", "diameter_mm": 150, "length_m": 784, "material": "PVC", "zone": "Parcelles Assainies", "age_years": 32, "risk": "high"}, {"id": "PIPE-135", "from": "N49", "to": "J4", "diameter_mm": 125, "length_m": 641, "material": "PEHD", "zone": "Parcelles Assainies", "age_years": 25, "risk": "medium"}, {"id": "PIPE-136", "from": "N49", "to": "N52", "diameter_mm": 150, "length_m": 768, "material": "PVC", "zone": "Parcelles Assainies", "age_years": 20, "risk": "medium"}, {"id": "PIPE-137", "from": "N50", "to": "V3", "diameter_mm": 150, "length_m": 99, "material": "PEHD", "zone": "Parcelles Assainies", "age_years": 12}, {"id": "PIPE-138", "from": "N50", "to": "N49", "diameter_mm": 150, "length_m": 959, "material": "acier", "zone": "Parcelles Assainies", "age_years": 10}, {"id": "PIPE-139", "from": "N50", "to": "N52", "diameter_mm": 150, "length_m": 1172, "material": "fonte", "zone": "Parcelles Assainies"}, {"id": "PIPE-140", "from": "N51", "to": "P3", "diameter_mm": 250, "length_m": 1256, "material": "PEHD", "zone": "Parcelles Assainies", "age_years": 32, "risk": "high"}, {"id": "PIPE-141", "from": "N51", "to": "N48", "diameter_mm": 100, "length_m": 987, "material": "PVC", "zone": "Parcelles Assainies", "age_years": 20, "risk": "medium"}, {"id": "PIPE-142", "from": "N52", "to": "R4", "diameter_mm": 150, "length_m": 317, "material": "PVC", "zone": "Parcelles Assainies"}, {"id": "PIPE-143", "from": "N53", "to": "R3", "diameter_mm": 80, "length_m": 879, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-144", "from": "N53", "to": "N59", "diameter_mm": 100, "length_m": 85, "material": "PEHD", "zone": "Pikine", "age_years": 20, "risk": "medium"}, {"id": "PIPE-145", "from": "N53", "to": "N54", "diameter_mm": 100, "length_m": 802, "material": "PVC", "zone": "Pikine", "age_years": 20, "risk": "medium"}, {"id": "PIPE-146", "from": "N54", "to": "J3", "diameter_mm": 150, "length_m": 1035, "material": "fonte", "zone": "Pikine", "age_years": 18}, {"id": "PIPE-147", "from": "N54", "to": "N59", "diameter_mm": 150, "length_m": 843, "material": "fonte", "zone": "Pikine"}, {"id": "PIPE-148", "from": "N55", "to": "R3", "diameter_mm": 150, "length_m": 1335, "material": "fonte", "zone": "Pikine", "age_years": 25, "risk": "medium"}, {"id": "PIPE-149", "from": "N55", "to": "N59", "diameter_mm": 125, "length_m": 1127, "material": "PEHD", "zone": "Pikine", "age_years": 20, "risk": "medium"}, {"id": "PIPE-150", "from": "N55", "to": "N53", "diameter_mm": 150, "length_m": 1155, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-151", "from": "N56", "to": "J3", "diameter_mm": 125, "length_m": 1150, "material": "PEHD", "zone": "Pikine"}, {"id": "PIPE-152", "from": "N56", "to": "N60", "diameter_mm": 80, "length_m": 801, "material": "PEHD", "zone": "Pikine"}, {"id": "PIPE-153", "from": "N56", "to": "N62", "diameter_mm": 100, "length_m": 926, "material": "PEHD", "zone": "Pikine"}, {"id": "PIPE-154", "from": "N57", "to": "J3", "diameter_mm": 200, "length_m": 848, "material": "PEHD", "zone": "Pikine"}, {"id": "PIPE-155", "from": "N57", "to": "N60", "diameter_mm": 100, "length_m": 301, "material": "acier", "zone": "Pikine"}, {"id": "PIPE-156", "from": "N57", "to": "N56", "diameter_mm": 100, "length_m": 1039, "material": "acier", "zone": "Pikine"}, {"id": "PIPE-157", "from": "N58", "to": "R3", "diameter_mm": 125, "length_m": 1339, "material": "PEHD", "zone": "Pikine", "age_years": 18}, {"id": "PIPE-158", "from": "N58", "to": "N61", "diameter_mm": 80, "length_m": 1173, "material": "PEHD", "zone": "Pikine", "age_years": 30, "risk": "high"}, {"id": "PIPE-159", "from": "N58", "to": "N62", "diameter_mm": 125, "length_m": 1188, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-160", "from": "N59", "to": "R3", "diameter_mm": 125, "length_m": 796, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-161", "from": "N60", "to": "J3", "diameter_mm": 150, "length_m": 978, "material": "PVC", "zone": "Pikine", "age_years": 32, "risk": "high"}, {"id": "PIPE-162", "from": "N61", "to": "R3", "diameter_mm": 80, "length_m": 486, "material": "PVC", "zone": "Pikine", "age_years": 12}, {"id": "PIPE-163", "from": "N61", "to": "N62", "diameter_mm": 80, "length_m": 52, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-164", "from": "N61", "to": "N56", "diameter_mm": 80, "length_m": 967, "material": "PEHD", "zone": "Pikine", "age_years": 10}, {"id": "PIPE-165", "from": "N62", "to": "R3", "diameter_mm": 125, "length_m": 534, "material": "PVC", "zone": "Pikine"}, {"id": "PIPE-166", "from": "N63", "to": "R4", "diameter_mm": 250, "length_m": 113, "material": "fonte", "zone": "Gu\u00e9diawaye", "age_years": 32, "risk": "high"}, {"id": "PIPE-167", "from": "N63", "to": "N68", "diameter_mm": 125, "length_m": 495, "material": "PVC", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-168", "from": "N63", "to": "N66", "diameter_mm": 150, "length_m": 1052, "material": "PVC", "zone": "Gu\u00e9diawaye", "age_years": 20, "risk": "medium"}, {"id": "PIPE-169", "from": "N64", "to": "V3", "diameter_mm": 125, "length_m": 1241, "material": "PVC", "zone": "Gu\u00e9diawaye", "age_years": 32, "risk": "high"}, {"id": "PIPE-170", "from": "N64", "to": "N69", "diameter_mm": 100, "length_m": 483, "material": "acier", "zone": "Gu\u00e9diawaye", "age_years": 20, "risk": "medium"}, {"id": "PIPE-171", "from": "N64", "to": "N68", "diameter_mm": 125, "length_m": 1240, "material": "PVC", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-172", "from": "N65", "to": "J3", "diameter_mm": 150, "length_m": 881, "material": "acier", "zone": "Gu\u00e9diawaye", "age_years": 38, "risk": "high"}, {"id": "PIPE-173", "from": "N65", "to": "N67", "diameter_mm": 125, "length_m": 320, "material": "fonte", "zone": "Gu\u00e9diawaye", "age_years": 30, "risk": "high"}, {"id": "PIPE-174", "from": "N65", "to": "N70", "diameter_mm": 80, "length_m": 1971, "material": "fonte", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-175", "from": "N66", "to": "J4", "diameter_mm": 100, "length_m": 998, "material": "PEHD", "zone": "Gu\u00e9diawaye", "age_years": 38, "risk": "high"}, {"id": "PIPE-176", "from": "N66", "to": "N70", "diameter_mm": 150, "length_m": 1136, "material": "fonte", "zone": "Gu\u00e9diawaye", "age_years": 20, "risk": "medium"}, {"id": "PIPE-177", "from": "N67", "to": "J3", "diameter_mm": 150, "length_m": 605, "material": "PEHD", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-178", "from": "N68", "to": "J4", "diameter_mm": 100, "length_m": 335, "material": "acier", "zone": "Gu\u00e9diawaye", "age_years": 25, "risk": "medium"}, {"id": "PIPE-179", "from": "N68", "to": "N69", "diameter_mm": 125, "length_m": 763, "material": "PEHD", "zone": "Gu\u00e9diawaye"}, {"id": "PIPE-180", "from": "N69", "to": "V3", "diameter_mm": 125, "length_m": 846, "material": "fonte", "zone": "Gu\u00e9diawaye", "age_years": 18}, {"id": "PIPE-181", "from": "N70", "to": "P4", "diameter_mm": 200, "length_m": 1266, "material": "PVC", "zone": "Gu\u00e9diawaye", "age_years": 18}, {"id": "PIPE-182", "from": "N70", "to": "N68", "diameter_mm": 100, "length_m": 1935, "material": "PVC", "zone": "Gu\u00e9diawaye", "age_years": 30, "risk": "high"}, {"id": "PIPE-183", "from": "N71", "to": "V4", "diameter_mm": 250, "length_m": 235, "material": "acier", "zone": "Rufisque", "age_years": 12}, {"id": "PIPE-184", "from": "N71", "to": "N77", "diameter_mm": 100, "length_m": 135, "material": "PVC", "zone": "Rufisque", "age_years": 20, "risk": "medium"}, {"id": "PIPE-185", "from": "N71", "to": "N74", "diameter_mm": 150, "length_m": 616, "material": "acier", "zone": "Rufisque", "age_years": 20, "risk": "medium"}, {"id": "PIPE-186", "from": "N72", "to": "V4", "diameter_mm": 80, "length_m": 1276, "material": "fonte", "zone": "Rufisque"}, {"id": "PIPE-187", "from": "N72", "to": "N74", "diameter_mm": 150, "length_m": 772, "material": "PVC", "zone": "Rufisque"}, {"id": "PIPE-188", "from": "N72", "to": "N71", "diameter_mm": 125, "length_m": 1171, "material": "PVC", "zone": "Rufisque"}, {"id": "PIPE-189", "from": "N73", "to": "V4", "diameter_mm": 150, "length_m": 961, "material": "PVC", "zone": "Rufisque", "age_years": 25, "risk": "medium"}, {"id": "PIPE-190", "from": "N73", "to": "N75", "diameter_mm": 125, "length_m": 595, "material": "acier", "zone": "Rufisque", "age_years": 30, "risk": "high"}, {"id": "PIPE-191", "from": "N73", "to": "N78", "diameter_mm": 125, "length_m": 672, "material": "fonte", "zone": "Rufisque", "age_years": 30, "risk": "high"}, {"id": "PIPE-192", "from": "N74", "to": "V4", "diameter_mm": 125, "length_m": 826, "material": "fonte", "zone": "Rufisque", "age_years": 38, "risk": "high"}, {"id": "PIPE-193", "from": "N74", "to": "N77", "diameter_mm": 100, "length_m": 742, "material": "PVC", "zone": "Rufisque", "age_years": 10}, {"id": "PIPE-194", "from": "N75", "to": "V4", "diameter_mm": 125, "length_m": 767, "material": "PVC", "zone": "Rufisque", "age_years": 12}, {"id": "PIPE-195", "from": "N75", "to": "N78", "diameter_mm": 100, "length_m": 340, "material": "PEHD", "zone": "Rufisque", "age_years": 30, "risk": "high"}, {"id": "PIPE-196", "from": "N76", "to": "V4", "diameter_mm": 250, "length_m": 1412, "material": "acier", "zone": "Rufisque", "age_years": 12}, {"id": "PIPE-197", "from": "N76", "to": "N74", "diameter_mm": 125, "length_m": 1047, "material": "PVC", "zone": "Rufisque", "age_years": 10}, {"id": "PIPE-198", "from": "N76", "to": "N71", "diameter_mm": 125, "length_m": 1201, "material": "PEHD", "zone": "Rufisque"}, {"id": "PIPE-199", "from": "N77", "to": "V4", "diameter_mm": 100, "length_m": 103, "material": "fonte", "zone": "Rufisque", "age_years": 25, "risk": "medium"}, {"id": "PIPE-200", "from": "N78", "to": "V4", "diameter_mm": 250, "length_m": 1106, "material": "PVC", "zone": "Rufisque"}]
+const SENSORS = [{"sensor_id": "S1_acoustic", "node_id": "J1", "kind": "acoustic", "name": "Acoustique Plateau", "lat": 14.69, "lng": -17.449, "zone": "Plateau", "value": 0.94, "unit": "score", "status": "critique"}, {"sensor_id": "S2_acoustic", "node_id": "J2", "kind": "acoustic", "name": "Acoustique HLM", "lat": 14.707, "lng": -17.438, "zone": "HLM", "value": 0.12, "unit": "score", "status": "normal"}, {"sensor_id": "S3_acoustic", "node_id": "J3", "kind": "acoustic", "name": "Acoustique Pikine", "lat": 14.75, "lng": -17.392, "zone": "Pikine", "value": 0.08, "unit": "score", "status": "normal"}, {"sensor_id": "S1_pressure", "node_id": "R1", "kind": "pressure", "name": "Pression Ch\u00e2teau d'Eau", "lat": 14.693, "lng": -17.445, "zone": "Plateau", "value": 3.4, "unit": "bar", "status": "normal"}, {"sensor_id": "S2_pressure", "node_id": "P1", "kind": "pressure", "name": "Pression Fann", "lat": 14.7, "lng": -17.463, "zone": "Fann", "value": 2.1, "unit": "bar", "status": "alerte"}, {"sensor_id": "S3_pressure", "node_id": "V2", "kind": "pressure", "name": "Pression Grand Dakar", "lat": 14.714, "lng": -17.432, "zone": "Grand Dakar", "value": 1.8, "unit": "bar", "status": "critique"}, {"sensor_id": "S4_pressure", "node_id": "P3", "kind": "pressure", "name": "Pression Parcelles", "lat": 14.73, "lng": -17.415, "zone": "Parcelles Assainies", "value": 3.2, "unit": "bar", "status": "normal"}, {"sensor_id": "M1_flow", "node_id": "P1", "kind": "flow", "name": "D\u00e9bit Fann", "lat": 14.7, "lng": -17.463, "zone": "Fann", "value": 1360, "unit": "m\u00b3/h", "status": "alerte"}, {"sensor_id": "M2_flow", "node_id": "P2", "kind": "flow", "name": "D\u00e9bit HLM", "lat": 14.71, "lng": -17.443, "zone": "HLM", "value": 870, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "M3_flow", "node_id": "P3", "kind": "flow", "name": "D\u00e9bit Parcelles", "lat": 14.73, "lng": -17.415, "zone": "Parcelles Assainies", "value": 1050, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "M4_flow", "node_id": "P4", "kind": "flow", "name": "D\u00e9bit Gu\u00e9diawaye", "lat": 14.745, "lng": -17.407, "zone": "Gu\u00e9diawaye", "value": 780, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "Q1_quality", "node_id": "R1", "kind": "quality", "name": "Qualit\u00e9 R\u00e9servoir Nord", "lat": 14.693, "lng": -17.445, "zone": "Plateau", "value": 7.2, "unit": "pH", "status": "normal"}, {"sensor_id": "Q2_quality", "node_id": "R2", "kind": "quality", "name": "Qualit\u00e9 R\u00e9servoir M\u00e9dina", "lat": 14.688, "lng": -17.46, "zone": "M\u00e9dina", "value": 7.1, "unit": "pH", "status": "normal"}, {"sensor_id": "R1_level", "node_id": "R1", "kind": "level", "name": "Niveau Ch\u00e2teau d'Eau", "lat": 14.693, "lng": -17.445, "zone": "Plateau", "value": 81.3, "unit": "%", "status": "normal"}, {"sensor_id": "R2_level", "node_id": "R2", "kind": "level", "name": "Niveau R\u00e9servoir M\u00e9dina", "lat": 14.688, "lng": -17.46, "zone": "M\u00e9dina", "value": 74.2, "unit": "%", "status": "normal"}, {"sensor_id": "R3_level", "node_id": "R3", "kind": "level", "name": "Niveau R\u00e9servoir Pikine", "lat": 14.752, "lng": -17.388, "zone": "Pikine", "value": 68.9, "unit": "%", "status": "normal"}, {"sensor_id": "R4_level", "node_id": "R4", "kind": "level", "name": "Niveau R\u00e9servoir Parcelles", "lat": 14.733, "lng": -17.412, "zone": "Parcelles Assainies", "value": 71.5, "unit": "%", "status": "normal"}, {"sensor_id": "P1_health", "node_id": "P1", "kind": "pump_health", "name": "Sant\u00e9 Pompe Fann", "lat": 14.7, "lng": -17.463, "zone": "Fann", "value": 62, "unit": "\u00b0C", "status": "critique"}, {"sensor_id": "P2_health", "node_id": "P2", "kind": "pump_health", "name": "Sant\u00e9 Pompe HLM", "lat": 14.71, "lng": -17.443, "zone": "HLM", "value": 45, "unit": "\u00b0C", "status": "normal"}, {"sensor_id": "AUTO_001", "node_id": "N1", "kind": "pressure", "name": "Capteur Pressure Plateau 1", "lat": 14.694067, "lng": -17.454375, "zone": "Plateau", "value": 1.6, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_002", "node_id": "N2", "kind": "flow", "name": "Capteur Flow Plateau 2", "lat": 14.686051, "lng": -17.44942, "zone": "Plateau", "value": 671, "unit": "m\u00b3/h", "status": "alerte"}, {"sensor_id": "AUTO_003", "node_id": "N3", "kind": "quality", "name": "Capteur Quality Plateau 3", "lat": 14.696202, "lng": -17.438083, "zone": "Plateau", "value": 6.8, "unit": "pH", "status": "critique"}, {"sensor_id": "AUTO_004", "node_id": "N4", "kind": "acoustic", "name": "Capteur Acoustic Plateau 4", "lat": 14.699628, "lng": -17.452827, "zone": "Plateau", "value": 0.69, "unit": "score", "status": "normal"}, {"sensor_id": "AUTO_005", "node_id": "N5", "kind": "pressure", "name": "Capteur Pressure Plateau 5", "lat": 14.689282, "lng": -17.454255, "zone": "Plateau", "value": 2.2, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_006", "node_id": "N6", "kind": "flow", "name": "Capteur Flow Plateau 6", "lat": 14.68481, "lng": -17.442366, "zone": "Plateau", "value": 876, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "AUTO_007", "node_id": "N7", "kind": "pressure", "name": "Capteur Pressure Plateau 7", "lat": 14.680584, "lng": -17.450029, "zone": "Plateau", "value": 3.0, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_008", "node_id": "N8", "kind": "flow", "name": "Capteur Flow Plateau 8", "lat": 14.694297, "lng": -17.441376, "zone": "Plateau", "value": 1194, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "AUTO_009", "node_id": "N9", "kind": "quality", "name": "Capteur Quality Plateau 9", "lat": 14.68485, "lng": -17.440268, "zone": "Plateau", "value": 7.2, "unit": "pH", "status": "normal"}, {"sensor_id": "AUTO_010", "node_id": "N10", "kind": "acoustic", "name": "Capteur Acoustic Plateau 10", "lat": 14.697807, "lng": -17.454838, "zone": "Plateau", "value": 0.57, "unit": "score", "status": "critique"}, {"sensor_id": "AUTO_011", "node_id": "N11", "kind": "pressure", "name": "Capteur Pressure M\u00e9dina 11", "lat": 14.696116, "lng": -17.453132, "zone": "M\u00e9dina", "value": 3.9, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_012", "node_id": "N12", "kind": "flow", "name": "Capteur Flow M\u00e9dina 12", "lat": 14.686805, "lng": -17.462357, "zone": "M\u00e9dina", "value": 589, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "AUTO_013", "node_id": "N13", "kind": "pressure", "name": "Capteur Pressure M\u00e9dina 13", "lat": 14.699144, "lng": -17.459278, "zone": "M\u00e9dina", "value": 1.8, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_014", "node_id": "N14", "kind": "flow", "name": "Capteur Flow M\u00e9dina 14", "lat": 14.681855, "lng": -17.463356, "zone": "M\u00e9dina", "value": 925, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "AUTO_015", "node_id": "N15", "kind": "quality", "name": "Capteur Quality M\u00e9dina 15", "lat": 14.69695, "lng": -17.454737, "zone": "M\u00e9dina", "value": 7.0, "unit": "pH", "status": "normal"}, {"sensor_id": "AUTO_016", "node_id": "N16", "kind": "acoustic", "name": "Capteur Acoustic M\u00e9dina 16", "lat": 14.696143, "lng": -17.452595, "zone": "M\u00e9dina", "value": 0.66, "unit": "score", "status": "normal"}, {"sensor_id": "AUTO_017", "node_id": "N17", "kind": "pressure", "name": "Capteur Pressure M\u00e9dina 17", "lat": 14.690725, "lng": -17.448457, "zone": "M\u00e9dina", "value": 1.7, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_018", "node_id": "N18", "kind": "flow", "name": "Capteur Flow M\u00e9dina 18", "lat": 14.687571, "lng": -17.455615, "zone": "M\u00e9dina", "value": 423, "unit": "m\u00b3/h", "status": "normal"}, {"sensor_id": "AUTO_019", "node_id": "N19", "kind": "pressure", "name": "Capteur Pressure M\u00e9dina 19", "lat": 14.696588, "lng": -17.454485, "zone": "M\u00e9dina", "value": 2.1, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_020", "node_id": "N20", "kind": "flow", "name": "Capteur Flow M\u00e9dina 20", "lat": 14.697234, "lng": -17.455185, "zone": "M\u00e9dina", "value": 1118, "unit": "m\u00b3/h", "status": "alerte"}, {"sensor_id": "AUTO_021", "node_id": "N21", "kind": "quality", "name": "Capteur Quality Fann 21", "lat": 14.706091, "lng": -17.471221, "zone": "Fann", "value": 7.0, "unit": "pH", "status": "normal"}, {"sensor_id": "AUTO_022", "node_id": "N22", "kind": "acoustic", "name": "Capteur Acoustic Fann 22", "lat": 14.696558, "lng": -17.46708, "zone": "Fann", "value": 0.47, "unit": "score", "status": "normal"}, {"sensor_id": "AUTO_023", "node_id": "N23", "kind": "pressure", "name": "Capteur Pressure Fann 23", "lat": 14.693596, "lng": -17.468043, "zone": "Fann", "value": 2.8, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_024", "node_id": "N24", "kind": "flow", "name": "Capteur Flow Fann 24", "lat": 14.69402, "lng": -17.467274, "zone": "Fann", "value": 400, "unit": "m\u00b3/h", "status": "alerte"}, {"sensor_id": "AUTO_025", "node_id": "N25", "kind": "pressure", "name": "Capteur Pressure Fann 25", "lat": 14.704714, "lng": -17.465798, "zone": "Fann", "value": 3.5, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_026", "node_id": "N26", "kind": "flow", "name": "Capteur Flow Fann 26", "lat": 14.699404, "lng": -17.468438, "zone": "Fann", "value": 230, "unit": "m\u00b3/h", "status": "alerte"}, {"sensor_id": "AUTO_027", "node_id": "N27", "kind": "quality", "name": "Capteur Quality Fann 27", "lat": 14.69734, "lng": -17.456077, "zone": "Fann", "value": 7.7, "unit": "pH", "status": "normal"}, {"sensor_id": "AUTO_028", "node_id": "N28", "kind": "acoustic", "name": "Capteur Acoustic Fann 28", "lat": 14.704961, "lng": -17.461645, "zone": "Fann", "value": 0.2, "unit": "score", "status": "normal"}, {"sensor_id": "AUTO_029", "node_id": "N29", "kind": "pressure", "name": "Capteur Pressure HLM 29", "lat": 14.70308, "lng": -17.43823, "zone": "HLM", "value": 2.9, "unit": "bar", "status": "normal"}, {"sensor_id": "AUTO_030", "node_id": "N30", "kind": "flow", "name": "Capteur Flow HLM 30", "lat": 14.702941, "lng": -17.446273, "zone": "HLM", "value": 320, "unit": "m\u00b3/h", "status": "normal"}]
+const ALERTS = [{"alert_id": "ALT-001", "type": "Fuite", "location": "Grand Dakar \u2014 J1-J2", "severity": "Critique", "probability": 0.94, "lat": 14.712, "lng": -17.438, "pipe_id": "PIPE-07", "date": "2026-03-11 09:20", "status": "En cours", "estimated_loss_m3h": 85, "description": "Vibrations acoustiques anormales sur canalisation amiante-ciment"}, {"alert_id": "ALT-002", "type": "Panne pompe", "location": "Station Fann \u2014 P1", "severity": "Critique", "probability": 0.91, "lat": 14.7, "lng": -17.463, "pipe_id": null, "date": "2026-03-11 10:10", "status": "En cours", "estimated_loss_m3h": 0, "description": "Surchauffe (62\u00b0C) et vibrations anormales"}, {"alert_id": "ALT-003", "type": "D\u00e9bit anormal", "location": "Fann-Plateau", "severity": "Alerte", "probability": 0.78, "lat": 14.696, "lng": -17.454, "pipe_id": "PIPE-01", "date": "2026-03-11 09:45", "status": "Analyse", "estimated_loss_m3h": 40, "description": "D\u00e9bit 15% au-dessus de la normale"}, {"alert_id": "ALT-004", "type": "Pression basse", "location": "Zone M\u00e9dina", "severity": "Alerte", "probability": 0.65, "lat": 14.693, "lng": -17.456, "pipe_id": "PIPE-05", "date": "2026-03-11 09:50", "status": "Surveillance", "estimated_loss_m3h": 0, "description": "Pression en baisse continue depuis 2h"}]
 
 const SENSOR_COLORS: Record<string,string> = {
   acoustic:"#a78bfa", pressure:"#38bdf8", flow:"#34d399",
   quality:"#22d3ee", level:"#fbbf24", pump_health:"#f87171",
-}
-const STATUS_COLORS: Record<string,string> = {
-  normal:"#34d399", alerte:"#fbbf24", critique:"#f87171",
 }
 const SEVERITY_COLORS: Record<string,string> = {
   Critique:"#f87171", Alerte:"#fbbf24", Moyen:"#a78bfa", Faible:"#94a3b8",
@@ -33,383 +23,313 @@ export function DakarWaterMap() {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const leafletRef = useRef<any>(null)
-  const layersRef = useRef<Record<string,any>>({})
   const [mapReady, setMapReady] = useState(false)
   const [clock, setClock] = useState("")
   const [selectedSensor, setSelectedSensor] = useState<any>(null)
   const [selectedAlert, setSelectedAlert] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [expanded, setExpanded] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
-  // ── Clock ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const check = () => { const m = window.innerWidth < 768; setIsMobile(m); if (m) setSidebarOpen(false) }
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
+
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString("fr-FR"))
     tick(); const id = setInterval(tick, 1000); return () => clearInterval(id)
   }, [])
 
-  // ── Invalidate map size when layout changes ───────────────────────────────
   useEffect(() => {
-    if (mapRef.current) setTimeout(() => mapRef.current.invalidateSize(), 350)
-  }, [sidebarOpen, expanded])
+    if (mapRef.current) setTimeout(() => mapRef.current.invalidateSize(), 300)
+  }, [sidebarOpen])
 
-  // ── Init Leaflet ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return
-
-    import("leaflet").then((L) => {
-      import("leaflet/dist/leaflet.css")
-
-      const map = L.map(mapContainerRef.current!, {
-        center:[14.71,-17.44], zoom:13, zoomControl:false, attributionControl:false,
+    import("leaflet").then((lm) => {
+      const L = lm.default ?? lm
+      if (mapRef.current || !mapContainerRef.current) return
+      const map = L.map(mapContainerRef.current, {
+        center:[14.715,-17.430], zoom:13, zoomControl:false, attributionControl:false,
       })
-      
       L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
         subdomains:"abcd", maxZoom:19,
       }).addTo(map)
-      
       L.control.zoom({ position:"bottomright" }).addTo(map)
-      
-      mapRef.current = map
       leafletRef.current = L
+      mapRef.current = map
       setMapReady(true)
     })
-
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }
   }, [])
 
-  // ── Draw network ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!mapReady || !leafletRef.current || !mapRef.current) return
-    const L = leafletRef.current
-    const map = mapRef.current
+    if (!mapReady) return
+    const L = leafletRef.current; const map = mapRef.current
+    if (!L || !map) return
+    const nm: Record<string,any> = {}
+    NODES.forEach((n:any) => { nm[n.id] = n })
+    INTER_NODES.forEach((n:any) => { nm[n.id] = n })
 
-    const nodeMap: Record<string,any> = {}
-    NODES.forEach((n:any) => { nodeMap[n.id] = n })
-    INTER_NODES.forEach((n:any) => { nodeMap[n.id] = n })
-
-    // Tuyaux
-    PIPES.forEach((pipe:any) => {
-      const from = nodeMap[pipe.from]; const to = nodeMap[pipe.to]
-      if (!from || !to) return
-      const isAlerted = ALERTS.some((a:any) => a.pipe_id === pipe.id)
-      const color = pipe.risk === "high" ? "#f87171"
-        : pipe.risk === "medium" ? "#fbbf24"
-        : isAlerted ? "#fb923c" : "#22d3ee"
-      const weight = Math.max(1.2, (pipe.diameter_mm || 150) / 140)
-      const poly = L.polyline(
-        [[from.lat, from.lng],[to.lat, to.lng]],
-        { color, weight, opacity:0.70, dashArray: pipe.risk==="high"?"6 4":pipe.risk==="medium"?"10 4":null }
+    PIPES.forEach((p:any) => {
+      const f = nm[p.from]; const t = nm[p.to]
+      if (!f || !t) return
+      const isAlert = ALERTS.some((a:any) => a.pipe_id === p.id)
+      const c = p.risk==="high"?"#f87171":p.risk==="medium"?"#fbbf24":isAlert?"#fb923c":"#22d3ee"
+      const w = Math.max(1.2, (p.diameter_mm||150)/140)
+      const poly = L.polyline([[f.lat,f.lng],[t.lat,t.lng]],
+        {color:c,weight:w,opacity:0.70,dashArray:p.risk==="high"?"6 4":p.risk==="medium"?"10 4":null}
       ).addTo(map)
       poly.bindTooltip(
-        `<div style="background:#0f172a;border:1px solid #22d3ee33;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace">
-          <b style="color:#22d3ee">${pipe.id}</b><br/>
-          ${pipe.from} → ${pipe.to}<br/>
-          ∅ ${pipe.diameter_mm}mm · ${pipe.material}
-          ${pipe.age_years ? `<br/><span style="color:${color}">⚠ ${pipe.age_years} ans</span>` : ""}
-        </div>`,
-        { sticky:true, opacity:1 }
+        `<div style="background:#0f172a;border:1px solid #22d3ee33;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace"><b style="color:#22d3ee">${p.id}</b><br/>${p.from}→${p.to}<br/>∅${p.diameter_mm}mm·${p.material}${p.age_years?`<br/><span style="color:${c}">⚠${p.age_years}ans</span>`:""}</div>`,
+        {sticky:true,opacity:1}
       )
-      layersRef.current[`pipe-${pipe.id}`] = poly
     })
 
-    // Nœuds backbone
     NODES.forEach((node:any) => {
-      const symbol = NODE_SYMBOLS[node.type] || "●"
-      const nodeColor = node.type==="reservoir"?"#38bdf8":node.type==="pump"?"#fbbf24":node.type==="valve"?"#a78bfa":"#64748b"
+      const sym = NODE_SYMBOLS[node.type]||"●"
+      const nc = node.type==="reservoir"?"#38bdf8":node.type==="pump"?"#fbbf24":node.type==="valve"?"#a78bfa":"#64748b"
       const icon = L.divIcon({
-        html:`<div style="width:34px;height:34px;background:${nodeColor}22;border:2px solid ${nodeColor};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;color:${nodeColor};box-shadow:0 0 12px ${nodeColor}66;backdrop-filter:blur(4px)">${symbol}</div>`,
-        className:"", iconSize:[34,34], iconAnchor:[17,17],
+        html:`<div style="width:32px;height:32px;background:${nc}22;border:2px solid ${nc};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;color:${nc};box-shadow:0 0 10px ${nc}55">${sym}</div>`,
+        className:"",iconSize:[32,32],iconAnchor:[16,16],
       })
-      const marker = L.marker([node.lat,node.lng],{icon}).addTo(map)
-      marker.bindTooltip(
-        `<div style="background:#0f172a;border:1px solid ${nodeColor}44;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace">
-          <b style="color:${nodeColor}">${node.name}</b><br/>Zone: ${node.zone}
-          ${node.capacity_m3?`<br/>Capacité: ${node.capacity_m3.toLocaleString()} m³`:""}
-          ${node.flow_m3h?`<br/>Débit: ${node.flow_m3h} m³/h`:""}
-        </div>`,
-        { sticky:true, opacity:1 }
+      L.marker([node.lat,node.lng],{icon}).addTo(map).bindTooltip(
+        `<div style="background:#0f172a;border:1px solid ${nc}44;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace"><b style="color:${nc}">${node.name}</b><br/>Zone:${node.zone}${node.capacity_m3?`<br/>Capacité:${node.capacity_m3.toLocaleString()}m³`:""}${node.flow_m3h?`<br/>Débit:${node.flow_m3h}m³/h`:""}</div>`,
+        {sticky:true,opacity:1}
       )
-      layersRef.current[`node-${node.id}`] = marker
     })
 
-    // Capteurs IoT
     SENSORS.forEach((s:any) => {
-      const color = s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":SENSOR_COLORS[s.kind]||"#34d399"
-      const isPulsing = s.status !== "normal"
+      const c = s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":SENSOR_COLORS[s.kind]||"#34d399"
+      const pulse = s.status!=="normal"
       const icon = L.divIcon({
-        html:`<div style="position:relative;width:20px;height:20px">
-          ${isPulsing?`<div style="position:absolute;inset:-6px;border-radius:50%;background:${color}33;animation:sP 1.8s ease-out infinite"></div><style>@keyframes sP{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`:""}
-          <div style="position:relative;width:20px;height:20px;border-radius:50%;background:${color}33;border:2px solid ${color};box-shadow:0 0 8px ${color}88"></div>
-        </div>`,
-        className:"", iconSize:[20,20], iconAnchor:[10,10],
+        html:`<div style="position:relative;width:20px;height:20px">${pulse?`<div style="position:absolute;inset:-6px;border-radius:50%;background:${c}33;animation:sP 1.8s ease-out infinite"></div><style>@keyframes sP{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`:""}<div style="position:relative;width:20px;height:20px;border-radius:50%;background:${c}33;border:2px solid ${c};box-shadow:0 0 8px ${c}88"></div></div>`,
+        className:"",iconSize:[20,20],iconAnchor:[10,10],
       })
-      const marker = L.marker([s.lat,s.lng],{icon}).addTo(map)
-      marker.on("click",() => setSelectedSensor(s))
-      marker.bindTooltip(
-        `<div style="background:#0f172a;border:1px solid ${color}44;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace">
-          <b style="color:${color}">${s.name}</b><br/>${s.value} ${s.unit} · ${s.zone}
-        </div>`,
-        { sticky:true, opacity:1 }
-      )
-      layersRef.current[`sensor-${s.sensor_id}`] = marker
+      L.marker([s.lat,s.lng],{icon}).addTo(map)
+        .on("click",()=>setSelectedSensor(s))
+        .bindTooltip(`<div style="background:#0f172a;border:1px solid ${c}44;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace"><b style="color:${c}">${s.name}</b><br/>${s.value}${s.unit}·${s.zone}</div>`,{sticky:true,opacity:1})
     })
 
-    // Alertes
     ALERTS.forEach((alert:any) => {
-      const color = SEVERITY_COLORS[alert.severity]
-      L.circle([alert.lat,alert.lng],{
-        radius:alert.severity==="Critique"?200:130, color, fillColor:color,
-        fillOpacity:0.08, weight:1.5, dashArray:"4 4",
-      }).addTo(map)
-      const alertIcon = L.divIcon({
-        html:`<div style="position:relative;width:32px;height:32px">
-          <div style="position:absolute;inset:0;border-radius:50%;border:2px solid ${color};background:${color}22;box-shadow:0 0 16px ${color}88;display:flex;align-items:center;justify-content:center;font-size:14px;animation:aG 1.4s ease-in-out infinite alternate">⚠</div>
-          <style>@keyframes aG{from{box-shadow:0 0 8px ${color}66}to{box-shadow:0 0 22px ${color}}}</style>
-        </div>`,
-        className:"", iconSize:[32,32], iconAnchor:[16,16], zIndexOffset:1000,
+      const c = SEVERITY_COLORS[alert.severity]
+      L.circle([alert.lat,alert.lng],{radius:alert.severity==="Critique"?180:120,color:c,fillColor:c,fillOpacity:0.08,weight:1.5,dashArray:"4 4"}).addTo(map)
+      const icon = L.divIcon({
+        html:`<div style="width:32px;height:32px;border-radius:50%;border:2px solid ${c};background:${c}22;box-shadow:0 0 14px ${c}88;display:flex;align-items:center;justify-content:center;font-size:14px;animation:aG 1.4s ease-in-out infinite alternate">⚠<style>@keyframes aG{from{box-shadow:0 0 8px ${c}66}to{box-shadow:0 0 20px ${c}}}</style></div>`,
+        className:"",iconSize:[32,32],iconAnchor:[16,16],zIndexOffset:1000,
       })
-      const marker = L.marker([alert.lat,alert.lng],{icon:alertIcon}).addTo(map)
-      marker.on("click",() => setSelectedAlert(alert))
-      layersRef.current[`alert-${alert.alert_id}`] = marker
+      L.marker([alert.lat,alert.lng],{icon}).addTo(map).on("click",()=>setSelectedAlert(alert))
     })
   }, [mapReady])
 
-  const critiques = ALERTS.filter((a:any)=>a.severity==="Critique").length
-  const totalDebit = SENSORS.filter((s:any)=>s.kind==="flow").reduce((acc:number,s:any)=>acc+s.value,0)
-  const sNormal = SENSORS.filter((s:any)=>s.status==="normal").length
-  const sAlerte = SENSORS.filter((s:any)=>s.status==="alerte").length
-  const sCritique = SENSORS.filter((s:any)=>s.status==="critique").length
+  const totalDebit = SENSORS.filter((s:any)=>s.kind==="flow").reduce((a:number,s:any)=>a+s.value,0)
+  const sN = SENSORS.filter((s:any)=>s.status==="normal").length
+  const sA = SENSORS.filter((s:any)=>s.status==="alerte").length
+  const sC = SENSORS.filter((s:any)=>s.status==="critique").length
+  const SW = 260
 
   return (
-    <div style={{fontFamily:"'JetBrains Mono','Fira Code',monospace",position:"relative",width:"100%"}}>
+    <div style={{fontFamily:"monospace",position:"relative",width:"100%",height:"100%",display:"flex"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&display=swap');
-        .aqop-panel {
-          background: #020817;
-          border: 1px solid rgba(34,211,238,0.22);
-          border-radius: 10px;
-          box-shadow: 0 4px 32px rgba(0,0,0,.8);
-        }
-        .aqop-scroll::-webkit-scrollbar{width:3px}
-        .aqop-scroll::-webkit-scrollbar-thumb{background:rgba(34,211,238,.3);border-radius:2px}
+        .aq-sb::-webkit-scrollbar{width:3px}
+        .aq-sb::-webkit-scrollbar-thumb{background:rgba(34,211,238,.3);border-radius:2px}
         .leaflet-tooltip{background:transparent!important;border:none!important;box-shadow:none!important}
         .leaflet-tooltip::before{display:none!important}
-        .aqop-expanded-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)}
       `}</style>
 
-      {/* ── Expanded overlay backdrop ── */}
-      {expanded && <div className="aqop-expanded-overlay" onClick={()=>setExpanded(false)} />}
+      {/* Mobile backdrop */}
+      {isMobile && sidebarOpen && (
+        <div onClick={()=>setSidebarOpen(false)}
+          style={{position:"absolute",inset:0,zIndex:19,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(2px)"}} />
+      )}
 
-      {/* ── Map wrapper ── */}
+      {/* Sidebar */}
       <div style={{
-        position: expanded ? "fixed" : "relative",
-        inset: expanded ? "0" : "auto",
-        zIndex: expanded ? 9999 : 1,
-        display: "flex",
-        width: expanded ? "100vw" : "100%",
-        height: expanded ? "100vh" : "620px",
-        borderRadius: expanded ? 0 : 10,
-        overflow: "hidden",
-        transition: "all .3s ease",
+        position:isMobile?"absolute":"relative",
+        left:0,top:0,bottom:0,
+        zIndex:isMobile?20:10,
+        width:sidebarOpen?SW:0,
+        minWidth:sidebarOpen?SW:0,
+        height:"100%",
+        overflow:"hidden",
+        transition:"width .25s ease,min-width .25s ease",
+        background:"#020817",
+        borderRight:"1px solid rgba(34,211,238,.22)",
+        display:"flex",
+        flexDirection:"column",
+        flexShrink:0,
       }}>
+        <div className="aq-sb" style={{flex:1,overflowY:"auto",padding:14,display:"flex",flexDirection:"column",gap:14,width:SW,opacity:sidebarOpen?1:0,transition:"opacity .2s"}}>
+          <p style={{color:"#22d3ee",fontSize:10,fontWeight:700,letterSpacing:"0.15em",margin:0}}>AQUAPULSE — OPÉRATEUR</p>
 
-        {/* Sidebar rétractable */}
-        <div style={{
-          width: sidebarOpen ? 240 : 0,
-          minWidth: sidebarOpen ? 240 : 0,
-          overflow: "hidden",
-          transition: "width .3s ease, min-width .3s ease",
-          background: "#020817",
-          borderRight: "1px solid rgba(34,211,238,.22)",
-          display: "flex",
-          flexDirection: "column",
-          zIndex: 10,
-          position: "relative",
-        }}>
-          {/* Tab toggle */}
-          <button
-            onClick={()=>setSidebarOpen(o=>!o)}
-            style={{
-              position:"absolute", right:-18, top:"50%", transform:"translateY(-50%)",
-              width:18, height:60, background:"#020817",
-              border:"1px solid rgba(34,211,238,.22)", borderLeft:"none",
-              borderRadius:"0 6px 6px 0",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              cursor:"pointer", zIndex:20, color:"#22d3ee", fontSize:10,
-            }}
-          >{sidebarOpen ? "‹" : "›"}</button>
-
-          {/* Sidebar content */}
-          <div className="aqop-scroll" style={{
-            flex:1, overflowY:"auto", padding:14,
-            display:"flex", flexDirection:"column", gap:14,
-            width:240,
-          }}>
-            <p style={{color:"#22d3ee",fontSize:10,fontWeight:700,letterSpacing:"0.15em",margin:0}}>
-              AQUAPULSE — OPÉRATEUR
-            </p>
-
-            {/* Réseau */}
-            <div>
-              <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>RÉSEAU</p>
-              {[
-                {label:"Conduites",value:`${PIPES.length}`},
-                {label:"Nœuds",value:`${NODES.length}`},
-                {label:"Débit total",value:`${Math.round(totalDebit)} m³/h`},
-                {label:"Synchro",value:clock},
-              ].map(item=>(
-                <div key={item.label} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(34,211,238,.08)"}}>
-                  <span style={{color:"#64748b",fontSize:11}}>{item.label}</span>
-                  <span style={{color:"#e2e8f0",fontSize:11,fontWeight:600}}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Capteurs */}
-            <div>
-              <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>
-                CAPTEURS IoT &nbsp;
-                <span style={{color:"#34d399"}}>{sNormal}✓</span>{" "}
-                <span style={{color:"#fbbf24"}}>{sAlerte}⚠</span>{" "}
-                <span style={{color:"#f87171"}}>{sCritique}✕</span>
-              </p>
-              <div className="aqop-scroll" style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-                {SENSORS.filter((s:any)=>["pressure","flow","acoustic"].includes(s.kind)).map((s:any)=>{
-                  const color = s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":"#34d399"
-                  return (
-                    <div key={s.sensor_id} onClick={()=>{setSelectedSensor(s);mapRef.current?.setView([s.lat,s.lng],16)}}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",borderRadius:5,cursor:"pointer",
-                        background:selectedSensor?.sensor_id===s.sensor_id?`${color}18`:"transparent",
-                        border:`1px solid ${selectedSensor?.sensor_id===s.sensor_id?color+"44":"transparent"}`,transition:"all .15s"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:7}}>
-                        <div style={{width:7,height:7,borderRadius:"50%",background:color,boxShadow:`0 0 5px ${color}`}}/>
-                        <span style={{color:"#94a3b8",fontSize:10,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
-                      </div>
-                      <span style={{color,fontSize:10,fontWeight:700}}>{s.value} {s.unit}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Alertes */}
-            <div>
-              <p style={{color:"#f87171",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>
-                ALERTES &nbsp;<span style={{background:"#f8717133",borderRadius:3,padding:"1px 5px"}}>{ALERTS.length}</span>
-              </p>
-              <div className="aqop-scroll" style={{maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:5}}>
-                {ALERTS.map((alert:any)=>{
-                  const color = SEVERITY_COLORS[alert.severity]
-                  return (
-                    <div key={alert.alert_id} onClick={()=>{setSelectedAlert(alert);mapRef.current?.setView([alert.lat,alert.lng],16)}}
-                      style={{padding:"7px 9px",borderRadius:6,cursor:"pointer",background:`${color}11`,
-                        borderTop:`1px solid ${color}22`,borderRight:`1px solid ${color}22`,borderBottom:`1px solid ${color}22`,
-                        borderLeft:`3px solid ${color}`,transition:"all .15s"}}>
-                      <div style={{display:"flex",justifyContent:"space-between"}}>
-                        <span style={{color,fontSize:11,fontWeight:700}}>{alert.type}</span>
-                        <span style={{color,fontSize:10}}>{(alert.probability*100).toFixed(0)}%</span>
-                      </div>
-                      <div style={{color:"#64748b",fontSize:10,marginTop:2}}>{alert.location}</div>
-                      <div style={{color:"#475569",fontSize:10}}>{alert.status}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Carte */}
-        <div style={{flex:1,position:"relative"}}>
-          {/* Bouton expand */}
-          <button onClick={()=>setExpanded(e=>!e)} style={{
-            position:"absolute",top:12,right:12,zIndex:1000,
-            background:"#020817",border:"1px solid rgba(34,211,238,.3)",
-            borderRadius:6,padding:"6px 10px",cursor:"pointer",
-            color:"#22d3ee",fontSize:12,fontWeight:700,
-          }}>{expanded?"⊠ Réduire":"⊞ Plein écran"}</button>
-
-          {/* Carte légèrement floutée, net au clic */}
-          <div style={{width:"100%",height:"100%",filter:expanded?"none":"blur(0.4px)",transition:"filter .3s"}}>
-            <div ref={mapContainerRef} style={{width:"100%",height:"100%"}} />
-          </div>
-
-          {/* Légende */}
-          <div className="aqop-panel" style={{position:"absolute",bottom:40,right:12,zIndex:1000,padding:"10px 14px"}}>
-            <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:6}}>LÉGENDE</p>
+          <div>
+            <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>RÉSEAU</p>
             {[
-              {color:"#38bdf8",label:"Réservoir ▣"},
-              {color:"#fbbf24",label:"Pompe ⚙"},
-              {color:"#a78bfa",label:"Vanne ◈"},
-              {color:"#f87171",label:"Tuyau risque élevé"},
-              {color:"#fbbf24",label:"Tuyau risque moyen"},
-              {color:"#22d3ee",label:"Tuyau normal"},
-            ].map(item=>(
-              <div key={item.label} style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
-                <div style={{width:8,height:8,borderRadius:2,background:item.color,flexShrink:0}}/>
-                <span style={{color:"#64748b",fontSize:10}}>{item.label}</span>
+              {l:"Conduites",v:`${PIPES.length}`},
+              {l:"Nœuds",v:`${NODES.length}`},
+              {l:"Débit total",v:`${Math.round(totalDebit)} m³/h`},
+              {l:"Synchro",v:clock},
+            ].map(x=>(
+              <div key={x.l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(34,211,238,.08)"}}>
+                <span style={{color:"#64748b",fontSize:11}}>{x.l}</span>
+                <span style={{color:"#e2e8f0",fontSize:11,fontWeight:600}}>{x.v}</span>
               </div>
             ))}
           </div>
 
-          {/* Panel détail droite */}
-          {(selectedSensor||selectedAlert) && (
-            <div className="aqop-panel" style={{position:"absolute",right:12,top:48,width:240,zIndex:1000,padding:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                <span style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em"}}>
-                  {selectedSensor?"CAPTEUR":"ALERTE"}
-                </span>
-                <button onClick={()=>{setSelectedSensor(null);setSelectedAlert(null)}}
-                  style={{color:"#475569",background:"none",border:"none",cursor:"pointer",fontSize:16}}>✕</button>
-              </div>
-              {selectedSensor && (()=>{
-                const color = selectedSensor.status==="critique"?"#f87171":selectedSensor.status==="alerte"?"#fbbf24":SENSOR_COLORS[selectedSensor.kind]||"#34d399"
+          <div>
+            <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>
+              CAPTEURS IoT &nbsp;
+              <span style={{color:"#34d399"}}>{sN}✓</span>{" "}
+              <span style={{color:"#fbbf24"}}>{sA}⚠</span>{" "}
+              <span style={{color:"#f87171"}}>{sC}✕</span>
+            </p>
+            <div className="aq-sb" style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+              {SENSORS.filter((s:any)=>["pressure","flow","acoustic"].includes(s.kind)).map((s:any)=>{
+                const c = s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":"#34d399"
                 return (
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{color,fontSize:13,fontWeight:700}}>{selectedSensor.name}</div>
-                    <div style={{color:"#64748b",fontSize:11}}>{selectedSensor.zone} · {selectedSensor.kind}</div>
-                    <div style={{background:`${color}18`,border:`1px solid ${color}44`,borderRadius:6,padding:"10px 14px",textAlign:"center"}}>
-                      <div style={{color,fontSize:22,fontWeight:700}}>{selectedSensor.value}</div>
-                      <div style={{color:"#64748b",fontSize:11}}>{selectedSensor.unit}</div>
+                  <div key={s.sensor_id}
+                    onClick={()=>{setSelectedSensor(s);if(isMobile)setSidebarOpen(false);mapRef.current?.setView([s.lat,s.lng],16)}}
+                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",borderRadius:5,cursor:"pointer",
+                      background:selectedSensor?.sensor_id===s.sensor_id?`${c}18`:"transparent",
+                      border:`1px solid ${selectedSensor?.sensor_id===s.sensor_id?c+"44":"transparent"}`,transition:"all .15s"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7}}>
+                      <div style={{width:7,height:7,borderRadius:"50%",background:c,boxShadow:`0 0 5px ${c}`}}/>
+                      <span style={{color:"#94a3b8",fontSize:10,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
                     </div>
-                    <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:4,background:`${color}22`,border:`1px solid ${color}44`,alignSelf:"flex-start"}}>
-                      <div style={{width:6,height:6,borderRadius:"50%",background:color}}/>
-                      <span style={{color,fontSize:11,fontWeight:600,textTransform:"uppercase"}}>{selectedSensor.status}</span>
-                    </div>
-                    <div style={{color:"#475569",fontSize:10}}>ID: {selectedSensor.sensor_id}</div>
+                    <span style={{color:c,fontSize:10,fontWeight:700}}>{s.value} {s.unit}</span>
                   </div>
                 )
-              })()}
-              {selectedAlert && !selectedSensor && (()=>{
-                const color = SEVERITY_COLORS[selectedAlert.severity]
-                return (
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{color,fontSize:13,fontWeight:700}}>⚠ {selectedAlert.type}</div>
-                    <div style={{color:"#e2e8f0",fontSize:12}}>{selectedAlert.location}</div>
-                    <div style={{background:`${color}18`,border:`1px solid ${color}44`,borderRadius:6,padding:"8px 12px"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                        <span style={{color:"#64748b",fontSize:11}}>Probabilité IA</span>
-                        <span style={{color,fontSize:13,fontWeight:700}}>{(selectedAlert.probability*100).toFixed(0)}%</span>
-                      </div>
-                      <div style={{display:"flex",justifyContent:"space-between"}}>
-                        <span style={{color:"#64748b",fontSize:11}}>Statut</span>
-                        <span style={{color:"#e2e8f0",fontSize:11}}>{selectedAlert.status}</span>
-                      </div>
-                      {selectedAlert.estimated_loss_m3h>0&&(
-                        <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
-                          <span style={{color:"#64748b",fontSize:11}}>Perte estimée</span>
-                          <span style={{color:"#f87171",fontSize:11,fontWeight:700}}>{selectedAlert.estimated_loss_m3h} m³/h</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{color:"#64748b",fontSize:11,lineHeight:1.5}}>{selectedAlert.description}</div>
-                    <div style={{color:"#475569",fontSize:10}}>{selectedAlert.date}</div>
-                  </div>
-                )
-              })()}
+              })}
             </div>
-          )}
+          </div>
+
+          <div>
+            <p style={{color:"#f87171",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:8}}>
+              ALERTES &nbsp;<span style={{background:"#f8717133",borderRadius:3,padding:"1px 5px"}}>{ALERTS.length}</span>
+            </p>
+            {ALERTS.map((a:any)=>{
+              const c = SEVERITY_COLORS[a.severity]
+              return (
+                <div key={a.alert_id}
+                  onClick={()=>{setSelectedAlert(a);if(isMobile)setSidebarOpen(false);mapRef.current?.setView([a.lat,a.lng],15)}}
+                  style={{padding:"7px 9px",borderRadius:6,cursor:"pointer",marginBottom:5,background:`${c}0d`,
+                    borderTop:`1px solid ${c}22`,borderRight:`1px solid ${c}22`,borderBottom:`1px solid ${c}22`,
+                    borderLeft:`3px solid ${c}`,transition:"all .15s"}}>
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span style={{color:c,fontSize:11,fontWeight:700}}>{a.type}</span>
+                    <span style={{color:c,fontSize:10}}>{(a.probability*100).toFixed(0)}%</span>
+                  </div>
+                  <div style={{color:"#64748b",fontSize:10,marginTop:2}}>{a.location}</div>
+                  <div style={{color:"#475569",fontSize:10}}>{a.status}</div>
+                </div>
+              )
+            })}
+          </div>
         </div>
+      </div>
+
+      {/* Zone carte */}
+      <div style={{flex:1,position:"relative",minWidth:0}}>
+        {/* Toggle sidebar button */}
+        <button onClick={()=>setSidebarOpen(o=>!o)} style={{
+          position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",
+          zIndex:1000,width:22,height:56,
+          background:"#020817",border:"1px solid rgba(34,211,238,.35)",borderLeft:"none",
+          borderRadius:"0 8px 8px 0",cursor:"pointer",color:"#22d3ee",fontSize:12,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          boxShadow:"3px 0 12px rgba(0,0,0,0.5)",
+        }}>
+          {sidebarOpen?"‹":"›"}
+        </button>
+
+        {/* Mobile fab */}
+        {isMobile && !sidebarOpen && (
+          <button onClick={()=>setSidebarOpen(true)} style={{
+            position:"absolute",bottom:80,left:12,zIndex:1000,
+            background:"#020817",border:"1px solid rgba(34,211,238,.4)",
+            borderRadius:10,padding:"10px 14px",
+            color:"#22d3ee",fontSize:11,fontWeight:700,cursor:"pointer",
+            boxShadow:"0 4px 20px rgba(0,0,0,0.6)",
+          }}>☰ Infos réseau</button>
+        )}
+
+        <div ref={mapContainerRef} style={{width:"100%",height:"100%"}} />
+
+        {/* Légende */}
+        <div style={{position:"absolute",bottom:40,right:12,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.22)",borderRadius:10,padding:"10px 14px"}}>
+          <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:6}}>LÉGENDE</p>
+          {[
+            {c:"#38bdf8",l:"Réservoir ▣"},
+            {c:"#fbbf24",l:"Pompe ⚙"},
+            {c:"#a78bfa",l:"Vanne ◈"},
+            {c:"#f87171",l:"Tuyau risque élevé"},
+            {c:"#fbbf24",l:"Tuyau risque moyen"},
+            {c:"#22d3ee",l:"Tuyau normal"},
+          ].map(x=>(
+            <div key={x.l} style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
+              <div style={{width:8,height:8,borderRadius:2,background:x.c,flexShrink:0}}/>
+              <span style={{color:"#64748b",fontSize:10}}>{x.l}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Panneau détail */}
+        {(selectedSensor||selectedAlert) && (
+          <div style={{position:"absolute",right:12,top:12,width:220,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.22)",borderRadius:10,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <span style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em"}}>{selectedSensor?"CAPTEUR":"ALERTE"}</span>
+              <button onClick={()=>{setSelectedSensor(null);setSelectedAlert(null)}} style={{color:"#475569",background:"none",border:"none",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            {selectedSensor&&(()=>{
+              const c=selectedSensor.status==="critique"?"#f87171":selectedSensor.status==="alerte"?"#fbbf24":SENSOR_COLORS[selectedSensor.kind]||"#34d399"
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{color:c,fontSize:13,fontWeight:700}}>{selectedSensor.name}</div>
+                  <div style={{color:"#64748b",fontSize:11}}>{selectedSensor.zone} · {selectedSensor.kind}</div>
+                  <div style={{background:`${c}18`,border:`1px solid ${c}44`,borderRadius:6,padding:"10px 14px",textAlign:"center"}}>
+                    <div style={{color:c,fontSize:22,fontWeight:700}}>{selectedSensor.value}</div>
+                    <div style={{color:"#64748b",fontSize:11}}>{selectedSensor.unit}</div>
+                  </div>
+                  <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:4,background:`${c}22`,border:`1px solid ${c}44`,alignSelf:"flex-start"}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:c}}/>
+                    <span style={{color:c,fontSize:11,fontWeight:600,textTransform:"uppercase"}}>{selectedSensor.status}</span>
+                  </div>
+                  <div style={{color:"#475569",fontSize:10}}>ID: {selectedSensor.sensor_id}</div>
+                </div>
+              )
+            })()}
+            {selectedAlert&&!selectedSensor&&(()=>{
+              const c=SEVERITY_COLORS[selectedAlert.severity]
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{color:c,fontSize:13,fontWeight:700}}>⚠ {selectedAlert.type}</div>
+                  <div style={{color:"#e2e8f0",fontSize:12}}>{selectedAlert.location}</div>
+                  <div style={{background:`${c}18`,border:`1px solid ${c}44`,borderRadius:6,padding:"8px 12px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                      <span style={{color:"#64748b",fontSize:11}}>Probabilité IA</span>
+                      <span style={{color:c,fontSize:13,fontWeight:700}}>{(selectedAlert.probability*100).toFixed(0)}%</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span style={{color:"#64748b",fontSize:11}}>Statut</span>
+                      <span style={{color:"#e2e8f0",fontSize:11}}>{selectedAlert.status}</span>
+                    </div>
+                    {selectedAlert.estimated_loss_m3h>0&&(
+                      <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+                        <span style={{color:"#64748b",fontSize:11}}>Perte estimée</span>
+                        <span style={{color:"#f87171",fontSize:11,fontWeight:700}}>{selectedAlert.estimated_loss_m3h} m³/h</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{color:"#64748b",fontSize:11,lineHeight:1.5}}>{selectedAlert.description}</div>
+                  <div style={{color:"#475569",fontSize:10}}>{selectedAlert.date}</div>
+                </div>
+              )
+            })()}
+          </div>
+        )}
       </div>
     </div>
   )

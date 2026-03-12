@@ -17,7 +17,7 @@ export function DashboardLayout({
   fullscreen?: boolean
 }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(fullscreen) // auto-collapse sur les pages carte/sim
+  const [collapsed, setCollapsed] = useState(false)
 
   return (
     <div className="min-h-screen bg-background">
