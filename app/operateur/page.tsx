@@ -4,58 +4,75 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { KPICard } from "@/components/kpi-card"
 import { StatusBadge } from "@/components/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { AlertTriangle, Droplets, Radio, Activity, TrendingUp } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
 import Link from "next/link"
 import { useApiQuery } from "@/hooks/use-api-query"
 import type { OperatorDashboardData } from "@/lib/types"
 
-// Données de démo non-nulles — affichées si l'API ne répond pas
-const DEFAULT_DATA: OperatorDashboardData = {
+const EMPTY_DATA: OperatorDashboardData = {
   kpis: {
-    leakDetections: 4,
-    activeAlerts: 7,
-    criticalAlerts: 2,
-    networkHealth: 87,
-    activeSensors: 38,
-    availabilityRate: 93,
+    leakDetections: 0,
+    activeAlerts: 0,
+    criticalAlerts: 0,
+    networkHealth: 0,
+    activeSensors: 0,
+    availabilityRate: 0,
   },
-  flowData: [
-    { time: "00h", debit: 1820, pression: 3.2 },
-    { time: "03h", debit: 1640, pression: 3.4 },
-    { time: "06h", debit: 2100, pression: 3.1 },
-    { time: "09h", debit: 2850, pression: 2.9 },
-    { time: "12h", debit: 3100, pression: 2.7 },
-    { time: "15h", debit: 2950, pression: 2.8 },
-    { time: "18h", debit: 3200, pression: 2.6 },
-    { time: "21h", debit: 2600, pression: 3.0 },
-    { time: "24h", debit: 2100, pression: 3.2 },
-  ],
-  alertsData: [
-    { jour: "Lun", alertes: 3 },
-    { jour: "Mar", alertes: 5 },
-    { jour: "Mer", alertes: 2 },
-    { jour: "Jeu", alertes: 7 },
-    { jour: "Ven", alertes: 4 },
-    { jour: "Sam", alertes: 6 },
-    { jour: "Dim", alertes: 7 },
-  ],
-  recentAlerts: [
-    { id: "ALT-001", severity: "critique", type: "Fuite détectée",    location: "Grand Dakar — J1-J2",    probability: "94%", time: "Il y a 45 min" },
-    { id: "ALT-002", severity: "critique", type: "Panne pompe",       location: "Station Fann — P1",       probability: "91%", time: "Il y a 1h10" },
-    { id: "ALT-003", severity: "alerte",   type: "Débit anormal",     location: "Canalisation Fann-Plateau", probability: "78%", time: "Il y a 1h30" },
-    { id: "ALT-004", severity: "alerte",   type: "Pression basse",    location: "Zone Grand Dakar",         probability: "65%", time: "Il y a 2h" },
-  ],
-  sensorStatus: [
-    { label: "Normal",    count: 33, color: "bg-emerald-500" },
-    { label: "En alerte", count: 4,  color: "bg-amber-500"   },
-    { label: "Critique",  count: 4,  color: "bg-red-500"     },
-  ],
+  flowData: [],
+  alertsData: [],
+  recentAlerts: [],
+  sensorStatus: [],
 }
 
 export default function OperateurDashboard() {
-  const { data } = useApiQuery<OperatorDashboardData>("/api/operateur/dashboard", DEFAULT_DATA)
+  const { data, loading } = useApiQuery<OperatorDashboardData>("/api/operateur/dashboard", EMPTY_DATA)
   const sensorTotal = data.sensorStatus.reduce((sum, s) => sum + s.count, 0)
+
+  if (loading) {
+    return (
+      <DashboardLayout role="operateur" title="Tableau de Bord Opérateur">
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="border border-border/60 shadow-sm">
+                <CardContent className="p-5 space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-3 w-36" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2 border border-border/60 shadow-sm">
+              <CardContent className="p-5">
+                <Skeleton className="h-[280px] w-full" />
+              </CardContent>
+            </Card>
+            <div className="space-y-6">
+              <Card className="border border-border/60 shadow-sm">
+                <CardContent className="p-5 space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}
+                </CardContent>
+              </Card>
+              <Card className="border border-border/60 shadow-sm">
+                <CardContent className="p-5">
+                  <Skeleton className="h-[140px] w-full" />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+          <Card className="border border-border/60 shadow-sm">
+            <CardContent className="p-5 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout role="operateur" title="Tableau de Bord Opérateur">

@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Search, User, Menu, Sun, Moon } from "lucide-react"
+import { Bell, Search, User, Sun, Moon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -38,7 +38,6 @@ export function DashboardHeader({
   const [mounted, setMounted] = useState(false)
   const [auth, setAuth] = useState<AuthHeaderState>({ user: null, notifications: 0 })
 
-  // Avoid hydration mismatch for theme icon
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -64,12 +63,11 @@ export function DashboardHeader({
   const isDark = theme === "dark"
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md lg:px-6">
+    /* fixed tout en haut, z-[9999] pour rester au-dessus de tout (Leaflet, sidebar, etc.)
+       Le hamburger mobile a été supprimé — la navigation est maintenant en bas */
+    <header className="fixed top-0 left-0 right-0 z-[9999] flex h-16 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-md lg:px-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Menu</span>
-        </Button>
+        {/* Plus de bouton hamburger — bottom nav gère la navigation mobile */}
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
       </div>
 
@@ -119,7 +117,7 @@ export function DashboardHeader({
           </Button>
         )}
 
-        {/* Profil + déconnexion */}
+        {/* Profil */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="rounded-full">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">

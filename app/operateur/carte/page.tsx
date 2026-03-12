@@ -21,9 +21,15 @@ const DakarWaterMap = dynamic(
 export default function OperateurCartePage() {
   return (
     <DashboardLayout role="operateur" title="Jumeau Numérique" fullscreen>
+      {/* Sur desktop : calc(100dvh - 5.5rem) = viewport - header - padding
+          Sur mobile  : calc(100dvh - 9.5rem) = viewport - header - bottom-nav - padding
+          isolation:isolate confine les z-index Leaflet */}
+      <style>{`
+        @media (max-width: 1023px) { .aq-map-wrap { height: calc(100dvh - 9.5rem) !important; } }
+      `}</style>
       <div
-        className="rounded-xl border border-border/60 bg-card shadow-lg overflow-hidden"
-        style={{ height: "calc(100vh - 5.5rem)" }}
+        className="aq-map-wrap rounded-xl border border-border/60 bg-card shadow-lg overflow-hidden"
+        style={{ height: "calc(100dvh - 5.5rem)", isolation: "isolate" }}
       >
         <DakarWaterMap />
       </div>

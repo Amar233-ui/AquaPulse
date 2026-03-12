@@ -4,7 +4,7 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { useState, useRef, useCallback } from "react"
 import {
   Play, RotateCcw, Download, Droplets, Thermometer,
-  CloudRain, AlertTriangle, Zap, Gauge, Users, Factory, Clock, Flame
+  CloudRain, AlertTriangle, Zap, Gauge, Users, Factory, Clock, Flame, ChevronDown
 } from "lucide-react"
 import {
   Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip,
@@ -113,11 +113,27 @@ const SCENARIOS=[
   {id:"rupture",      label:"Rupture conduite",  icon:"✕"},
 ]
 
-// Semantic status colours — works in both themes
 const RED="#dc2626", AMBER="#ca8a04", GREEN="#16a34a", BLUE="#2563eb", PURPLE="#7c3aed", SLATE="#64748b"
 const statusColor=(v:number,good:"high"|"low"="high")=>{
   const bad=good==="high"?v<30:v>60, mid=good==="high"?v<60:v>30
   return bad?RED:mid?AMBER:GREEN
+}
+
+// Accordéon section pour mobile
+function Section({title, defaultOpen=false, children}:{title:string;defaultOpen?:boolean;children:React.ReactNode}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="sc">
+      <button
+        onClick={()=>setOpen(o=>!o)}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+      >
+        <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">{title}</span>
+        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open?"rotate-180":""}`}/>
+      </button>
+      {open && <div className="px-3 pb-3 space-y-3">{children}</div>}
+    </div>
+  )
 }
 
 export default function SimulateurPage() {
@@ -152,6 +168,20 @@ export default function SimulateurPage() {
     {subject:"Anti-Fuites", A:100-params.leakRate*2},
   ]
 
+  const kpisPrimary=[
+    {label:"Vulnérabilité", value:`${metrics.vulnIndex}`,               unit:"/100",  color:statusColor(metrics.vulnIndex,"low"), icon:AlertTriangle},
+    {label:"Couverture",    value:`${metrics.coverageRate}`,             unit:"%",     color:statusColor(metrics.coverageRate),    icon:Gauge},
+    {label:"Énergie",       value:`${metrics.energyKwh}`,               unit:" kWh",  color:SLATE,                               icon:Zap},
+    {label:"Vol. perdu",    value:`${metrics.lostM3}`,                  unit:" m³",   color:metrics.lostM3>500?RED:AMBER,        icon:Droplets},
+    {label:"Coût pertes",   value:`${(metrics.costFcfa/1000).toFixed(0)}k`, unit:" FCFA", color:SLATE,                           icon:Factory},
+  ]
+  const kpisSecondary=[
+    {label:"Stress hydrique moyen", value:`${metrics.avgStress}%`,       color:statusColor(metrics.avgStress,"low")},
+    {label:"Pics de déficit (24h)", value:`${metrics.peaks} créneaux`,   color:metrics.peaks>4?RED:AMBER},
+    {label:"Niveau réservoirs",     value:`${metrics.reservoirPct}%`,    color:statusColor(metrics.reservoirPct)},
+    {label:"Qualité eau estimée",   value:`${metrics.waterQuality}/100`, color:statusColor(metrics.waterQuality)},
+  ]
+
   return (
     <DashboardLayout role="operateur" title="Simulateur de Stress Hydrique" fullscreen>
       <style>{`
@@ -163,12 +193,177 @@ export default function SimulateurPage() {
         .sl::-webkit-scrollbar-thumb{background:hsl(var(--border));border-radius:2px}
       `}</style>
 
-      <div style={{display:"grid",gridTemplateColumns:"285px 1fr",gap:"12px",height:"100%",maxHeight:"calc(100vh - 5.5rem)",overflow:"hidden"}}>
+      {/* ── LAYOUT RESPONSIVE ──
+          Mobile  : colonne unique, sections accordéon
+          Desktop : grille fixe 285px | reste  */}
+      <div className="block lg:hidden space-y-3 pb-4">
 
-        {/* ── LEFT ── */}
+        {/* KPIs en grid 2x3 sur mobile */}
+        <div className="grid grid-cols-2 gap-2">
+          {kpisPrimary.map(k=>(
+            <div key={k.label} className="sc px-3 py-2.5 flex flex-col gap-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <k.icon className="h-3 w-3"/><span>{k.label}</span>
+              </div>
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-lg font-bold tabular-nums" style={{color:k.color}}>{k.value}</span>
+                <span className="text-[10px] text-muted-foreground">{k.unit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* KPIs secondaires */}
+        <div className="grid grid-cols-2 gap-2">
+          {kpisSecondary.map(k=>(
+            <div key={k.label} className="sc px-3 py-2 flex flex-col gap-0.5">
+              <span className="text-[10px] text-muted-foreground leading-tight">{k.label}</span>
+              <span className="text-sm font-semibold" style={{color:k.color}}>{k.value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Graphique */}
+        <div className="sc">
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-border/50 overflow-x-auto">
+            {[{id:"debit",label:"Débit 24h"},{id:"zones",label:"Zones"},{id:"radar",label:"Santé"}].map(t=>(
+              <button key={t.id} onClick={()=>setTab(t.id as any)} className={`st whitespace-nowrap${tab===t.id?" on":""}`}>{t.label}</button>
+            ))}
+          </div>
+          <div className="p-2" style={{height:220}}>
+            {tab==="debit"&&(
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={visData} margin={{top:4,right:4,left:-28,bottom:0}}>
+                  <defs>
+                    {([[BLUE,"dG"],[RED,"sG"],[PURPLE,"lG"]] as [string,string][]).map(([c,id])=>(
+                      <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={c} stopOpacity={0.12}/>
+                        <stop offset="100%" stopColor={c} stopOpacity={0}/>
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize:8,fill:"hsl(var(--muted-foreground))"}} interval={3}/>
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize:8,fill:"hsl(var(--muted-foreground))"}}/> 
+                  <Tooltip contentStyle={{background:"hsl(var(--card))",border:"1px solid hsl(var(--border))",borderRadius:8,fontSize:10}}/>
+                  <Area type="monotone" dataKey="demand" stroke={BLUE}   fill="url(#dG)" strokeWidth={1.5} dot={false} name="Demande"/>
+                  <Area type="monotone" dataKey="supply" stroke={GREEN}  fill="none"     strokeWidth={1.5} strokeDasharray="5 4" dot={false} name="Offre"/>
+                  <Area type="monotone" dataKey="stress" stroke={RED}    fill="url(#sG)" strokeWidth={1.5} dot={false} name="Stress"/>
+                  <Area type="monotone" dataKey="loss"   stroke={PURPLE} fill="url(#lG)" strokeWidth={1}   dot={false} name="Pertes"/>
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+            {tab==="zones"&&(
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={zones} margin={{top:4,right:4,left:-28,bottom:20}}>
+                  <XAxis dataKey="zone" axisLine={false} tickLine={false} tick={{fontSize:7,fill:"hsl(var(--muted-foreground))"}} angle={-20} textAnchor="end"/>
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize:8,fill:"hsl(var(--muted-foreground))"}}/> 
+                  <Tooltip contentStyle={{background:"hsl(var(--card))",border:"1px solid hsl(var(--border))",borderRadius:8,fontSize:10}}/>
+                  <Bar dataKey="coverage" name="Couverture %" fill={GREEN}  fillOpacity={0.65} radius={[3,3,0,0]}/>
+                  <Bar dataKey="risk"     name="Risque %"     fill={RED}    fillOpacity={0.60} radius={[3,3,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            {tab==="radar"&&(
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="hsl(var(--border))"/>
+                  <PolarAngleAxis dataKey="subject" tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}}/> 
+                  <PolarRadiusAxis angle={30} domain={[0,100]} tick={{fontSize:7,fill:"hsl(var(--muted-foreground))"}}/> 
+                  <Radar name="Réseau" dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.12} strokeWidth={1.5}/>
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Scénarios — accordéon */}
+        <Section title="Scénario prédéfini" defaultOpen>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SCENARIOS.map(sc=>(
+              <button key={sc.id} onClick={()=>applyScenario(sc.id)}
+                className="rounded-lg px-2 py-2 text-left text-[11px] font-medium transition-all flex items-center gap-1.5"
+                style={{
+                  background:params.scenario===sc.id?"hsl(var(--muted))":"transparent",
+                  border:`1px solid ${params.scenario===sc.id?"hsl(var(--border))":"hsl(var(--border) / 0.4)"}`,
+                  color:params.scenario===sc.id?"hsl(var(--foreground))":"hsl(var(--muted-foreground))",
+                }}>
+                <span className="opacity-50 text-[10px]">{sc.icon}</span>{sc.label}
+              </button>
+            ))}
+          </div>
+        </Section>
+
+        {/* Paramètres climatiques */}
+        <Section title="Climatiques">
+          <PSlider label="Sécheresse"   icon={Thermometer} value={params.drought}      min={0}  max={100} step={5}   unit="%" accent={RED}    onChange={v=>up("drought",v)}/>
+          <PSlider label="Température"  icon={Flame}       value={params.temperature}   min={20} max={50}  step={1}   unit="°C" accent={AMBER} onChange={v=>up("temperature",v)}/>
+          <PSlider label="Pluviométrie" icon={CloudRain}   value={params.rainfall}      min={0}  max={300} step={10}  unit=" mm" accent={BLUE}  onChange={v=>up("rainfall",v)}/>
+        </Section>
+
+        {/* Infrastructure */}
+        <Section title="Infrastructure">
+          <PSlider label="Puissance pompes"  icon={Zap}      value={params.pumpPower}      min={20} max={100} step={5}   unit="%" accent={GREEN}  onChange={v=>up("pumpPower",v)}/>
+          <PSlider label="Pertes réseau"     icon={Droplets} value={params.leakRate}       min={0}  max={40}  step={1}   unit="%" accent={PURPLE} onChange={v=>up("leakRate",v)}/>
+          <PSlider label="Pression cible"    icon={Gauge}    value={params.targetPressure} min={1}  max={6}   step={0.5} unit=" bar" accent={SLATE} onChange={v=>up("targetPressure",v)}/>
+        </Section>
+
+        {/* Socio-économiques */}
+        <Section title="Socio-économiques">
+          <PSlider label="Croissance population" icon={Users}   value={params.population} min={0} max={50}  step={1} unit="%" accent={AMBER} onChange={v=>up("population",v)}/>
+          <PSlider label="Activité industrielle" icon={Factory} value={params.industry}   min={0} max={100} step={5} unit="%" accent={SLATE} onChange={v=>up("industry",v)}/>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5"/><span>Heure de pointe</span>
+            </div>
+            <div className="flex gap-1">
+              {(["matin","soir","nuit"] as const).map(h=>(
+                <button key={h} onClick={()=>up("peakHour",h)}
+                  className="flex-1 rounded-lg py-1.5 text-xs font-medium capitalize transition-all"
+                  style={{
+                    background:params.peakHour===h?"hsl(var(--muted))":"transparent",
+                    border:`1px solid hsl(var(--border) / ${params.peakHour===h?1:0.4})`,
+                    color:params.peakHour===h?"hsl(var(--foreground))":"hsl(var(--muted-foreground))",
+                  }}>{h}</button>
+              ))}
+            </div>
+          </div>
+        </Section>
+
+        {/* Actions */}
+        <div className="sc p-3 space-y-2">
+          <button onClick={handleRun} disabled={running}
+            className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all disabled:opacity-50"
+            style={{background:"hsl(var(--primary))",color:"hsl(var(--primary-foreground))"}}>
+            <Play className="h-4 w-4"/>
+            {running?"Simulation en cours…":"Lancer la Simulation"}
+          </button>
+          <div className="flex gap-2">
+            <button onClick={handleReset}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-all">
+              <RotateCcw className="h-3.5 w-3.5"/> Réinitialiser
+            </button>
+            <button className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-all">
+              <Download className="h-3.5 w-3.5"/> Exporter
+            </button>
+          </div>
+        </div>
+
+        {metrics.zonesAtRisk>0&&(
+          <div className="sc px-3 py-2 flex items-center gap-3" style={{borderColor:`${RED}44`,background:`${RED}08`}}>
+            <AlertTriangle className="h-4 w-4 shrink-0" style={{color:RED}}/>
+            <span className="text-xs text-muted-foreground">
+              <span className="font-semibold" style={{color:RED}}>{metrics.zonesAtRisk} zone{metrics.zonesAtRisk>1?"s":""}</span> en déficit :&nbsp;
+              {zones.filter(z=>z.coverage<70).map(z=>z.zone).join(", ")}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── DESKTOP LAYOUT (>= lg) ── */}
+      <div className="hidden lg:grid" style={{gridTemplateColumns:"285px 1fr",gap:"12px",height:"100%",maxHeight:"calc(100vh - 5.5rem)",overflow:"hidden"}}>
+
+        {/* LEFT */}
         <div className="sl flex flex-col gap-2.5 overflow-y-auto pr-0.5">
-
-          {/* Scénarios */}
           <div className="sc p-3">
             <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase mb-2">Scénario prédéfini</p>
             <div className="grid grid-cols-2 gap-1">
@@ -186,7 +381,6 @@ export default function SimulateurPage() {
             </div>
           </div>
 
-          {/* Climatiques */}
           <div className="sc p-3 space-y-3">
             <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Climatiques</p>
             <PSlider label="Sécheresse"   icon={Thermometer} value={params.drought}      min={0}  max={100} step={5}   unit="%" accent={RED}    onChange={v=>up("drought",v)}/>
@@ -194,7 +388,6 @@ export default function SimulateurPage() {
             <PSlider label="Pluviométrie" icon={CloudRain}   value={params.rainfall}      min={0}  max={300} step={10}  unit=" mm" accent={BLUE}  onChange={v=>up("rainfall",v)}/>
           </div>
 
-          {/* Infrastructure */}
           <div className="sc p-3 space-y-3">
             <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Infrastructure</p>
             <PSlider label="Puissance pompes"  icon={Zap}      value={params.pumpPower}      min={20} max={100} step={5}   unit="%" accent={GREEN}  onChange={v=>up("pumpPower",v)}/>
@@ -202,7 +395,6 @@ export default function SimulateurPage() {
             <PSlider label="Pression cible"    icon={Gauge}    value={params.targetPressure} min={1}  max={6}   step={0.5} unit=" bar" accent={SLATE} onChange={v=>up("targetPressure",v)}/>
           </div>
 
-          {/* Socio-économiques */}
           <div className="sc p-3 space-y-3">
             <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Socio-économiques</p>
             <PSlider label="Croissance population" icon={Users}   value={params.population} min={0} max={50}  step={1} unit="%" accent={AMBER} onChange={v=>up("population",v)}/>
@@ -225,7 +417,6 @@ export default function SimulateurPage() {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="sc p-3 space-y-2">
             <button onClick={handleRun} disabled={running}
               className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-50"
@@ -245,18 +436,10 @@ export default function SimulateurPage() {
           </div>
         </div>
 
-        {/* ── RIGHT ── */}
+        {/* RIGHT */}
         <div className="flex flex-col gap-2.5 min-h-0 overflow-hidden">
-
-          {/* KPIs principaux */}
           <div className="grid grid-cols-5 gap-2 shrink-0">
-            {[
-              {label:"Vulnérabilité", value:`${metrics.vulnIndex}`,               unit:"/100",  color:statusColor(metrics.vulnIndex,"low"), icon:AlertTriangle},
-              {label:"Couverture",    value:`${metrics.coverageRate}`,             unit:"%",     color:statusColor(metrics.coverageRate),    icon:Gauge},
-              {label:"Énergie",       value:`${metrics.energyKwh}`,               unit:" kWh",  color:SLATE,                               icon:Zap},
-              {label:"Volume perdu",  value:`${metrics.lostM3}`,                  unit:" m³",   color:metrics.lostM3>500?RED:AMBER,        icon:Droplets},
-              {label:"Coût pertes",   value:`${(metrics.costFcfa/1000).toFixed(0)}k`, unit:" FCFA", color:SLATE,                           icon:Factory},
-            ].map(k=>(
+            {kpisPrimary.map(k=>(
               <div key={k.label} className="sc px-3 py-2.5 flex flex-col gap-1">
                 <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                   <k.icon className="h-3 w-3"/><span>{k.label}</span>
@@ -269,14 +452,8 @@ export default function SimulateurPage() {
             ))}
           </div>
 
-          {/* KPIs secondaires */}
           <div className="grid grid-cols-4 gap-2 shrink-0">
-            {[
-              {label:"Stress hydrique moyen", value:`${metrics.avgStress}%`,       color:statusColor(metrics.avgStress,"low")},
-              {label:"Pics de déficit (24h)",  value:`${metrics.peaks} créneaux`,   color:metrics.peaks>4?RED:AMBER},
-              {label:"Niveau réservoirs",      value:`${metrics.reservoirPct}%`,    color:statusColor(metrics.reservoirPct)},
-              {label:"Qualité eau estimée",    value:`${metrics.waterQuality}/100`, color:statusColor(metrics.waterQuality)},
-            ].map(k=>(
+            {kpisSecondary.map(k=>(
               <div key={k.label} className="sc px-3 py-2 flex items-center justify-between gap-2">
                 <span className="text-[10px] text-muted-foreground leading-tight">{k.label}</span>
                 <span className="text-sm font-semibold whitespace-nowrap" style={{color:k.color}}>{k.value}</span>
@@ -284,7 +461,6 @@ export default function SimulateurPage() {
             ))}
           </div>
 
-          {/* Graphiques */}
           <div className="sc flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
               <div className="flex gap-1">
@@ -315,7 +491,7 @@ export default function SimulateurPage() {
                       ))}
                     </defs>
                     <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}} interval={2}/>
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}}/>
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}}/> 
                     <Tooltip contentStyle={{background:"hsl(var(--card))",border:"1px solid hsl(var(--border))",borderRadius:8,fontSize:11}} labelStyle={{color:"hsl(var(--foreground))",fontWeight:600}}/>
                     {metrics.avgStress>20&&<ReferenceLine y={140} stroke={AMBER} strokeDasharray="4 4" strokeWidth={1}/>}
                     <Area type="monotone" dataKey="demand" stroke={BLUE}   fill="url(#dG)" strokeWidth={1.5} dot={false} name="Demande m³/h"/>
@@ -329,9 +505,9 @@ export default function SimulateurPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={zones} margin={{top:6,right:8,left:-24,bottom:24}}>
                     <XAxis dataKey="zone" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}} angle={-20} textAnchor="end"/>
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}}/>
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:9,fill:"hsl(var(--muted-foreground))"}}/> 
                     <Tooltip contentStyle={{background:"hsl(var(--card))",border:"1px solid hsl(var(--border))",borderRadius:8,fontSize:11}}/>
-                    <Legend wrapperStyle={{fontSize:10,color:"hsl(var(--muted-foreground))"}}/>
+                    <Legend wrapperStyle={{fontSize:10,color:"hsl(var(--muted-foreground))"}}/> 
                     <Bar dataKey="coverage" name="Couverture %" fill={GREEN}  fillOpacity={0.65} radius={[3,3,0,0]}/>
                     <Bar dataKey="risk"     name="Risque %"     fill={RED}    fillOpacity={0.60} radius={[3,3,0,0]}/>
                     <Bar dataKey="pressure" name="Pression ×10" fill={BLUE}   fillOpacity={0.60} radius={[3,3,0,0]}/>
@@ -342,8 +518,8 @@ export default function SimulateurPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={radarData}>
                     <PolarGrid stroke="hsl(var(--border))"/>
-                    <PolarAngleAxis dataKey="subject" tick={{fontSize:11,fill:"hsl(var(--muted-foreground))"}}/>
-                    <PolarRadiusAxis angle={30} domain={[0,100]} tick={{fontSize:8,fill:"hsl(var(--muted-foreground))"}}/>
+                    <PolarAngleAxis dataKey="subject" tick={{fontSize:11,fill:"hsl(var(--muted-foreground))"}}/> 
+                    <PolarRadiusAxis angle={30} domain={[0,100]} tick={{fontSize:8,fill:"hsl(var(--muted-foreground))"}}/> 
                     <Radar name="Réseau" dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.12} strokeWidth={1.5}/>
                   </RadarChart>
                 </ResponsiveContainer>

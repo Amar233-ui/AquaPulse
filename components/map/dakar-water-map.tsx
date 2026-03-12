@@ -31,7 +31,7 @@ export function DakarWaterMap() {
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
-    const check = () => { const m = window.innerWidth < 768; setIsMobile(m); if (m) setSidebarOpen(false) }
+    const check = () => { const m = window.innerWidth < 1024; setIsMobile(m); if (m) setSidebarOpen(false) }
     check()
     window.addEventListener("resize", check)
     return () => window.removeEventListener("resize", check)
@@ -142,13 +142,14 @@ export function DakarWaterMap() {
       {/* Mobile backdrop */}
       {isMobile && sidebarOpen && (
         <div onClick={()=>setSidebarOpen(false)}
-          style={{position:"absolute",inset:0,zIndex:19,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(2px)"}} />
+          style={{position:"absolute",top:0,left:0,right:0,bottom:"4rem",zIndex:19,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(2px)"}} />
       )}
 
       {/* Sidebar */}
       <div style={{
+        /* En mobile, la sidebar s'arrête au-dessus de la bottom nav (4rem = 64px) */
         position:isMobile?"absolute":"relative",
-        left:0,top:0,bottom:0,
+        left:0,top:0,bottom:isMobile?"4rem":0,
         zIndex:isMobile?20:10,
         width:sidebarOpen?SW:0,
         minWidth:sidebarOpen?SW:0,
@@ -233,26 +234,29 @@ export function DakarWaterMap() {
 
       {/* Zone carte */}
       <div style={{flex:1,position:"relative",minWidth:0}}>
-        {/* Toggle sidebar button */}
-        <button onClick={()=>setSidebarOpen(o=>!o)} style={{
-          position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",
-          zIndex:1000,width:22,height:56,
-          background:"#020817",border:"1px solid rgba(34,211,238,.35)",borderLeft:"none",
-          borderRadius:"0 8px 8px 0",cursor:"pointer",color:"#22d3ee",fontSize:12,
-          display:"flex",alignItems:"center",justifyContent:"center",
-          boxShadow:"3px 0 12px rgba(0,0,0,0.5)",
-        }}>
-          {sidebarOpen?"‹":"›"}
-        </button>
+        {/* Toggle sidebar — desktop seulement (mobile utilise le FAB ci-dessus) */}
+        {!isMobile && (
+          <button onClick={()=>setSidebarOpen(o=>!o)} style={{
+            position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",
+            zIndex:2000,width:22,height:56,
+            background:"#020817",border:"1px solid rgba(34,211,238,.35)",borderLeft:"none",
+            borderRadius:"0 8px 8px 0",cursor:"pointer",color:"#22d3ee",fontSize:12,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            boxShadow:"3px 0 12px rgba(0,0,0,0.5)",
+          }}>
+            {sidebarOpen?"‹":"›"}
+          </button>
+        )}
 
-        {/* Mobile fab */}
+        {/* Mobile FAB — haut gauche, z-index élevé pour rester au-dessus de Leaflet */}
         {isMobile && !sidebarOpen && (
           <button onClick={()=>setSidebarOpen(true)} style={{
-            position:"absolute",bottom:80,left:12,zIndex:1000,
-            background:"#020817",border:"1px solid rgba(34,211,238,.4)",
-            borderRadius:10,padding:"10px 14px",
-            color:"#22d3ee",fontSize:11,fontWeight:700,cursor:"pointer",
-            boxShadow:"0 4px 20px rgba(0,0,0,0.6)",
+            position:"absolute",top:12,left:12,zIndex:2000,
+            background:"#020817",border:"1px solid rgba(34,211,238,.55)",
+            borderRadius:10,padding:"10px 16px",
+            color:"#22d3ee",fontSize:12,fontWeight:700,cursor:"pointer",
+            boxShadow:"0 4px 20px rgba(0,0,0,0.7)",
+            display:"flex",alignItems:"center",gap:8,
           }}>☰ Infos réseau</button>
         )}
 

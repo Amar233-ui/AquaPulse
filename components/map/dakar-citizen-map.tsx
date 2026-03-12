@@ -22,7 +22,7 @@ export function DakarCitizenMap() {
   const [drawerOpen,    setDrawerOpen]    = useState(false)
 
   useEffect(()=>{
-    const check=()=>{ const m=window.innerWidth<768; setIsMobile(m); if(m) setSidebarOpen(false) }
+    const check=()=>{ const m=window.innerWidth<1024; setIsMobile(m); if(m) setSidebarOpen(false) }
     check(); window.addEventListener("resize",check); return ()=>window.removeEventListener("resize",check)
   },[])
 
@@ -85,7 +85,7 @@ export function DakarCitizenMap() {
         className:"",iconSize:[30,30],iconAnchor:[15,15],zIndexOffset:1000,
       })
       L.marker([alert.lat,alert.lng],{icon}).addTo(map)
-        .on("click",()=>{ setSelectedAlert(alert); setSelectedZone(null); if(window.innerWidth<768) setDrawerOpen(true) })
+        .on("click",()=>{ setSelectedAlert(alert); setSelectedZone(null); if(window.innerWidth<1024) setDrawerOpen(true) })
     })
   },[mapReady])
 
@@ -178,13 +178,13 @@ export function DakarCitizenMap() {
           }}>{sidebarOpen?"‹":"›"}</button>
         )}
 
-        {/* Mobile FAB */}
+        {/* Mobile FAB — haut gauche, z-index élevé pour rester au-dessus de Leaflet */}
         {isMobile&&!drawerOpen&&(
           <button onClick={()=>setDrawerOpen(true)} style={{
-            position:"absolute",bottom:90,left:12,zIndex:1000,
-            background:"#020817",border:"1px solid rgba(34,211,238,.4)",borderRadius:12,
-            padding:"10px 16px",color:"#22d3ee",fontSize:11,fontWeight:700,cursor:"pointer",
-            boxShadow:"0 4px 20px rgba(0,0,0,0.6)",display:"flex",alignItems:"center",gap:6,
+            position:"absolute",top:12,left:12,zIndex:2000,
+            background:"#020817",border:"1px solid rgba(34,211,238,.55)",borderRadius:12,
+            padding:"10px 16px",color:"#22d3ee",fontSize:12,fontWeight:700,cursor:"pointer",
+            boxShadow:"0 4px 20px rgba(0,0,0,0.7)",display:"flex",alignItems:"center",gap:6,
           }}>
             💧 Mon eau
           </button>
@@ -226,14 +226,16 @@ export function DakarCitizenMap() {
       {isMobile&&(
         <>
           {drawerOpen&&<div onClick={()=>setDrawerOpen(false)} style={{position:"absolute",inset:0,zIndex:29,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(2px)"}}/>}
+          {/* bottom:"4rem" = hauteur de la bottom nav (64px).
+               Le drawer se glisse au-dessus d'elle, pas derrière. */}
           <div style={{
-            position:"absolute",bottom:0,left:0,right:0,zIndex:30,
+            position:"absolute",bottom:"4rem",left:0,right:0,zIndex:30,
             background:"#020817",borderRadius:"20px 20px 0 0",
             border:"1px solid rgba(34,211,238,.22)",borderBottom:"none",
             boxShadow:"0 -8px 40px rgba(0,0,0,0.6)",
-            transform:drawerOpen?"translateY(0)":"translateY(100%)",
+            transform:drawerOpen?"translateY(0)":"translateY(calc(100% + 4rem))",
             transition:"transform .3s cubic-bezier(0.32,0.72,0,1)",
-            maxHeight:"72vh",display:"flex",flexDirection:"column",
+            maxHeight:"60vh",display:"flex",flexDirection:"column",
           }}>
             {/* Handle */}
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0 4px",cursor:"pointer"}} onClick={()=>setDrawerOpen(false)}>

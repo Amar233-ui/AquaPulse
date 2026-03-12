@@ -115,7 +115,7 @@ export async function createUser(input: {
   }
 }
 
-export async function getCitizenDashboardData(): Promise<CitizenDashboardData> {
+export async function getCitizenDashboardData(quartier?: string): Promise<CitizenDashboardData> {
   const db = await getDb()
 
   const networkHealthRow = db.prepare("SELECT ROUND(AVG(health), 1) as value FROM sectors").get() as { value: number }
@@ -141,18 +141,60 @@ export async function getCitizenDashboardData(): Promise<CitizenDashboardData> {
     createdAt: string
   }>
 
-  const metrics = await getLatestMetrics()
-  const latestPh = metrics.ph?.value ?? 7.2
-  const latestTurbidity = metrics.turbidity?.value ?? 0.8
-  const latestChlorine = metrics.chlorine?.value ?? 0.5
-  const latestTemperature = metrics.temperature?.value ?? 18.5
+  // Données qualité : par quartier si fourni (table quartier_quality), sinon métriques globales
+  let latestPh: number
+  let latestTurbidity: number
+  let latestChlorine: number
+  let latestTemperature: number
+  let latestColiform: number
 
-  const networkHealth = Math.round(networkHealthRow.value ?? 0)
-  const pressureRate = Math.round(Math.min(100, ((pressureRow.value ?? 3) / 3.5) * 100))
+  // Tente de lire les données spécifiques au quartier.
+  // Wrapped en try/catch : si la table quartier_quality n'existe pas encore, on retombe sur les métriques globales.
+  let quartierLoaded = false
+  if (quartier) {
+    try {
+      const qRow = db
+        .prepare("SELECT ph, turbidity, chlorine, temperature, coliforms FROM quartier_quality WHERE quartier = ? LIMIT 1")
+        .get(quartier) as { ph: number; turbidity: number; chlorine: number; temperature: number; coliforms: number } | undefined
+
+      if (qRow) {
+        latestPh          = qRow.ph
+        latestTurbidity   = qRow.turbidity
+        latestChlorine    = qRow.chlorine
+        latestTemperature = qRow.temperature
+        latestColiform    = qRow.coliforms
+        quartierLoaded    = true
+      }
+    } catch {
+      // table absente ou erreur SQL → fallback global ci-dessous
+    }
+  }
+
+  if (!quartierLoaded) {
+    const metrics = await getLatestMetrics()
+    latestPh          = metrics.ph?.value          ?? 7.2
+    latestTurbidity   = metrics.turbidity?.value   ?? 0.8
+    latestChlorine    = metrics.chlorine?.value    ?? 0.5
+    latestTemperature = metrics.temperature?.value ?? 27.0
+    latestColiform    = metrics.coliform?.value    ?? 0
+  }
+
+  const networkHealth     = Math.round(networkHealthRow.value ?? 0)
+  const pressureRate      = Math.round(Math.min(100, ((pressureRow.value ?? 3) / 3.5) * 100))
   const activeSensorsRate = totalSensorsRow.value > 0 ? Math.round((activeSensorsRow.value / totalSensorsRow.value) * 100) : 0
 
+  const qualityScore = Math.round(
+    Math.max(0,
+      100
+      - latestTurbidity * 12
+      - Math.abs(latestPh - 7.2) * 8
+      - (latestColiform > 0 ? 15 : 0)
+      - (latestChlorine < 0.2 ? 8 : 0)
+    )
+  )
+
   return {
-    qualityScore: Math.round(Math.max(0, 100 - latestTurbidity * 12 - Math.abs(latestPh - 7.2) * 8)),
+    qualityScore,
     temperature: Number(toFixedString(latestTemperature, 1)),
     networkState: activeAlertsRow.value > 4 ? "Sous surveillance" : "Normal",
     activeAlerts: activeAlertsRow.value,
@@ -160,23 +202,28 @@ export async function getCitizenDashboardData(): Promise<CitizenDashboardData> {
     activeSensorsRate,
     pressureRate,
     waterQualityIndicators: [
-      { label: "pH", value: toFixedString(latestPh, 1), status: "normal", target: "6.5 - 8.5" },
+      {
+        label: "pH",
+        value: toFixedString(latestPh, 1),
+        status: latestPh < 6.5 || latestPh > 8.5 ? "critique" : latestPh < 6.8 ? "alerte" : "normal",
+        target: "6.5 - 8.5",
+      },
       {
         label: "Turbidite",
         value: `${toFixedString(latestTurbidity, 1)} NTU`,
-        status: latestTurbidity > 1 ? "alerte" : "normal",
+        status: latestTurbidity > 2 ? "critique" : latestTurbidity > 1 ? "alerte" : "normal",
         target: "< 1 NTU",
       },
       {
         label: "Chlore residuel",
         value: `${toFixedString(latestChlorine, 2)} mg/L`,
-        status: latestChlorine < 0.2 || latestChlorine > 0.8 ? "alerte" : "normal",
+        status: latestChlorine < 0.1 ? "critique" : latestChlorine < 0.2 || latestChlorine > 0.8 ? "alerte" : "normal",
         target: "0.2 - 0.8 mg/L",
       },
       {
         label: "Contamination",
-        value: `${toFixedString(metrics.coliform?.value ?? 0, 0)} CFU`,
-        status: (metrics.coliform?.value ?? 0) > 0 ? "critique" : "normal",
+        value: `${toFixedString(latestColiform, 1)} CFU`,
+        status: latestColiform > 1 ? "critique" : latestColiform > 0 ? "alerte" : "normal",
         target: "0 CFU/100mL",
       },
     ],
