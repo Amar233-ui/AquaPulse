@@ -209,13 +209,13 @@ export async function getCitizenDashboardData(quartier?: string): Promise<Citize
         target: "6.5 - 8.5",
       },
       {
-        label: "Turbidite",
+        label: "Turbidité",
         value: `${toFixedString(latestTurbidity, 1)} NTU`,
         status: latestTurbidity > 2 ? "critique" : latestTurbidity > 1 ? "alerte" : "normal",
         target: "< 1 NTU",
       },
       {
-        label: "Chlore residuel",
+        label: "Chlore résiduel",
         value: `${toFixedString(latestChlorine, 2)} mg/L`,
         status: latestChlorine < 0.1 ? "critique" : latestChlorine < 0.2 || latestChlorine > 0.8 ? "alerte" : "normal",
         target: "0.2 - 0.8 mg/L",
@@ -323,33 +323,33 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
         status: ph < 6.5 || ph > 8.5 ? "alerte" : "normal",
         min: "6.5",
         max: "8.5",
-        description: "Le pH mesure l'acidite ou la basicite de l'eau.",
+        description: "Le pH mesure l'acidité ou la basicité de l'eau.",
       },
       {
-        label: "Turbidite",
+        label: "Turbidité",
         value: toFixedString(turbidity, 1),
         unit: "NTU",
         status: turbidity > 1 ? "alerte" : "normal",
         min: "0",
         max: "1",
-        description: "La turbidite mesure la clarte de l'eau.",
+        description: "La turbidité mesure la clarte de l'eau.",
       },
       {
-        label: "Chlore residuel",
+        label: "Chlore résiduel",
         value: toFixedString(chlorine, 2),
         unit: "mg/L",
         status: chlorine < 0.2 || chlorine > 0.8 ? "alerte" : "normal",
         min: "0.2",
         max: "0.8",
-        description: "Le chlore residuel assure la desinfection de l'eau.",
+        description: "Le chlore résiduel assure la désinfection de l'eau.",
       },
       {
         label: "Temperature",
         value: toFixedString(temperature, 1),
         unit: "C",
-        status: temperature < 10 || temperature > 25 ? "alerte" : "normal",
-        min: "10",
-        max: "25",
+        status: temperature < 15 || temperature > 30 ? "alerte" : "normal",
+        min: "15",
+        max: "30",
         description: "La temperature de l'eau distribuee.",
       },
       {
@@ -359,7 +359,7 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
         status: conductivity < 200 || conductivity > 800 ? "alerte" : "normal",
         min: "200",
         max: "800",
-        description: "La conductivite mesure la mineralisation de l'eau.",
+        description: "La conductivite mesure la minéralisation de l'eau.",
       },
       {
         label: "Coliformes",
@@ -673,7 +673,7 @@ export async function getMaintenanceTasks(): Promise<{
       pending,
       completedThisMonth,
       aiPredictions,
-      avoidedCost: 42,
+      avoidedCost: Math.max(0, Math.floor(rows.filter(t => t.status === "Termine" || t.confidence >= 80).length * 4200)),
     },
     items: rows,
   }
@@ -769,9 +769,9 @@ async function nextSimulationId(): Promise<string> {
   return `SIM-${(row.count + 1).toString().padStart(3, "0")}`
 }
 
-function computeRiskLabel(avgStress: number): "Eleve" | "Moyen" | "Faible" {
+function computeRiskLabel(avgStress: number): "Élevé" | "Moyen" | "Faible" {
   if (avgStress >= 35) {
-    return "Eleve"
+    return "Élevé"
   }
 
   if (avgStress >= 15) {
@@ -880,7 +880,7 @@ export async function getSimulations(): Promise<{
     name: string
     scenario: string
     status: "Planifie" | "En cours" | "Termine"
-    resultRisk: "Eleve" | "Moyen" | "Faible" | "-"
+    resultRisk: "Élevé" | "Moyen" | "Faible" | "-"
     durationHours: number
     createdAt: string
   }>
@@ -1016,7 +1016,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     systemMetrics: [
       { name: "CPU", value: Math.min(92, 35 + criticalAlerts.value * 4) },
       { name: "Memoire", value: Math.min(89, 50 + offlineSensors.value) },
-      { name: "Stockage", value: 54 },
+      { name: "Stockage", value: Math.min(80, 30 + Math.floor(processedAlerts.value / 8)) },
       { name: "Bande Passante", value: Math.min(85, 28 + Math.floor(processedAlerts.value / 12)) },
     ],
     userActivity,
@@ -1027,10 +1027,10 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     })),
     security: [
       { label: "Certificats SSL", status: "Valide", color: "bg-success" },
-      { label: "Authentification 2FA", status: "Active", color: "bg-success" },
-      { label: "Derniere sauvegarde", status: "Il y a 2h", color: "bg-success" },
-      { label: "Scan de securite", status: "Aucune menace", color: "bg-success" },
-      { label: "Tentatives de connexion", status: "12 echouees (24h)", color: "bg-warning" },
+      { label: "Authentification 2FA", status: "Activée", color: "bg-success" },
+      { label: "Dernière sauvegarde", status: "Il y a 2h", color: "bg-success" },
+      { label: "Scan de sécurité", status: "Aucune menace", color: "bg-success" },
+      { label: "Tentatives de connexion", status: "12 échouées (24h)", color: "bg-warning" },
     ],
   }
 }
@@ -1124,8 +1124,8 @@ export async function setDeviceEnabled(deviceId: string, enabled: boolean): Prom
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  orgName: "Ville de Paris - Service des Eaux",
-  timezone: "europe-paris",
+  orgName: "SDE - Senegalaise Des Eaux, Dakar",
+  timezone: "africa-dakar",
   apiKey: "aqp_sk_9f2ce1d0bd9f87d2f45f11",
   notifications: {
     criticalEmail: true,
@@ -1239,4 +1239,115 @@ export async function getNotificationCount(role: UserRole): Promise<number> {
   const incidents = db.prepare("SELECT COUNT(*) as value FROM incidents WHERE status = 'Nouveau'").get() as { value: number }
   const users = db.prepare("SELECT COUNT(*) as value FROM users WHERE is_active = 0").get() as { value: number }
   return incidents.value + users.value
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS CITOYENS — fonctions opérateur & citoyen
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getOperatorIncidents(filters?: {
+  search?: string
+  status?: string
+}): Promise<{
+  items: import("@/lib/types").OperatorIncident[]
+  summary: import("@/lib/types").IncidentSummary
+}> {
+  const db = await getDb()
+  const whereClauses: string[] = []
+  const params: Array<string | number> = []
+
+  if (filters?.search) {
+    whereClauses.push("(type LIKE ? OR location LIKE ? OR description LIKE ?)")
+    const t = `%${filters.search}%`
+    params.push(t, t, t)
+  }
+  if (filters?.status && filters.status !== "all") {
+    whereClauses.push("status = ?")
+    params.push(filters.status)
+  }
+
+  const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : ""
+
+  const rows = db
+    .prepare(
+      `SELECT id, reporter_user_id as reporterUserId, type, location, description,
+              reporter_name as reporterName, reporter_email as reporterEmail,
+              status, created_at as createdAt, resolved_at as resolvedAt
+       FROM incidents
+       ${where}
+       ORDER BY CASE status WHEN 'Nouveau' THEN 0 WHEN 'En cours' THEN 1 WHEN 'Résolu' THEN 2 ELSE 3 END,
+                datetime(created_at) DESC`,
+    )
+    .all(...params) as Array<{
+      id: number; reporterUserId: number | null; type: string; location: string
+      description: string; reporterName: string | null; reporterEmail: string | null
+      status: string; createdAt: string; resolvedAt: string | null
+    }>
+
+  const summaryRows = db
+    .prepare("SELECT status, COUNT(*) as count FROM incidents GROUP BY status")
+    .all() as Array<{ status: string; count: number }>
+
+  const sm = new Map(summaryRows.map(r => [r.status, r.count]))
+  const total = summaryRows.reduce((acc, r) => acc + r.count, 0)
+
+  return {
+    items: rows.map(r => ({
+      id: r.id,
+      type: r.type,
+      location: r.location,
+      description: r.description,
+      status: r.status as import("@/lib/types").OperatorIncident["status"],
+      createdAt: toDisplayDate(r.createdAt),
+      resolvedAt: r.resolvedAt ? toDisplayDate(r.resolvedAt) : null,
+      reporterName: r.reporterName,
+      reporterEmail: r.reporterEmail,
+      reporterUserId: r.reporterUserId,
+    })),
+    summary: {
+      nouveau: sm.get("Nouveau") ?? 0,
+      enCours: sm.get("En cours") ?? 0,
+      resolu: sm.get("Résolu") ?? 0,
+      total,
+    },
+  }
+}
+
+export async function updateIncidentStatus(
+  id: number,
+  status: "Nouveau" | "En cours" | "Résolu" | "Fermé",
+): Promise<void> {
+  const db = await getDb()
+  const resolvedAt = status === "Résolu" ? new Date().toISOString() : null
+  db.prepare(
+    "UPDATE incidents SET status = ?, resolved_at = ? WHERE id = ?"
+  ).run(status, resolvedAt, id)
+}
+
+export async function getMyIncidents(
+  userId: number,
+): Promise<import("@/lib/types").CitizenIncident[]> {
+  const db = await getDb()
+  const rows = db
+    .prepare(
+      `SELECT id, type, location, description, reporter_name as reporterName,
+              status, created_at as createdAt, resolved_at as resolvedAt
+       FROM incidents WHERE reporter_user_id = ?
+       ORDER BY datetime(created_at) DESC LIMIT 20`,
+    )
+    .all(userId) as Array<{
+      id: number; type: string; location: string; description: string
+      reporterName: string | null; status: string; createdAt: string; resolvedAt: string | null
+    }>
+
+  return rows.map(r => ({
+    id: r.id,
+    type: r.type,
+    location: r.location,
+    description: r.description,
+    status: r.status as import("@/lib/types").CitizenIncident["status"],
+    createdAt: toDisplayDate(r.createdAt),
+    resolvedAt: r.resolvedAt ? toDisplayDate(r.resolvedAt) : null,
+    reporterName: r.reporterName,
+  }))
 }

@@ -197,6 +197,18 @@ function createSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS quartier_quality (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quartier TEXT NOT NULL UNIQUE,
+      ph REAL NOT NULL DEFAULT 7.0,
+      turbidity REAL NOT NULL DEFAULT 1.0,
+      chlorine REAL NOT NULL DEFAULT 0.3,
+      temperature REAL NOT NULL DEFAULT 27.0,
+      coliforms REAL NOT NULL DEFAULT 0,
+      is_safe INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_sensors_sector ON sensors(sector_id);
@@ -404,14 +416,14 @@ function seedAlerts(db: DatabaseSync) {
   const sensors = db.prepare("SELECT id, location FROM sensors ORDER BY id ASC LIMIT 20").all() as Array<{ id: string; location: string }>
 
   const baseAlerts = [
-    { id: "ALT-001", type: "Fuite", classification: "Fuite", location: "Bd Haussmann - Noeud #247", severity: "critique", probability: 94, status: "En cours", hoursAgo: 1 },
-    { id: "ALT-002", type: "Panne pompe", classification: "Panne pompe", location: "Station Est - Pompe #3", severity: "critique", probability: 91, status: "En cours", hoursAgo: 2 },
-    { id: "ALT-003", type: "Contamination", classification: "Contamination", location: "Reservoir Nord - Zone C", severity: "alerte", probability: 87, status: "Analyse", hoursAgo: 3 },
-    { id: "ALT-004", type: "Fraude", classification: "Fraude", location: "Secteur 12 - Compteur #891", severity: "alerte", probability: 72, status: "Investigation", hoursAgo: 5 },
-    { id: "ALT-005", type: "Fuite", classification: "Fuite", location: "Rue de Rivoli - Joint #12", severity: "moyen", probability: 65, status: "Planifie", hoursAgo: 7 },
-    { id: "ALT-006", type: "Pression", classification: "Panne pompe", location: "Zone Industrielle - Vanne #45", severity: "moyen", probability: 58, status: "Planifie", hoursAgo: 9 },
-    { id: "ALT-007", type: "Debit anormal", classification: "Fuite", location: "Secteur 5 - Canalisation C12", severity: "faible", probability: 45, status: "Surveillance", hoursAgo: 12 },
-    { id: "ALT-008", type: "Temperature", classification: "Contamination", location: "Reservoir Sud - Zone A", severity: "faible", probability: 38, status: "Surveillance", hoursAgo: 16 },
+    { id: "ALT-001", type: "Fuite", classification: "Fuite", location: "Grand Dakar - Noeud #247", severity: "critique", probability: 94, status: "En cours", hoursAgo: 1 },
+    { id: "ALT-002", type: "Panne pompe", classification: "Panne pompe", location: "Station Pompage Fann - Pompe #3", severity: "critique", probability: 91, status: "En cours", hoursAgo: 2 },
+    { id: "ALT-003", type: "Contamination", classification: "Contamination", location: "Reservoir Pikine - Zone C", severity: "alerte", probability: 87, status: "Analyse", hoursAgo: 3 },
+    { id: "ALT-004", type: "Fraude", classification: "Fraude", location: "Guediawaye - Compteur #891", severity: "alerte", probability: 72, status: "Investigation", hoursAgo: 5 },
+    { id: "ALT-005", type: "Fuite", classification: "Fuite", location: "Medina - Vanne Nord #12", severity: "moyen", probability: 65, status: "Planifie", hoursAgo: 7 },
+    { id: "ALT-006", type: "Pression", classification: "Panne pompe", location: "Station Pompage HLM - Vanne #45", severity: "moyen", probability: 58, status: "Planifie", hoursAgo: 9 },
+    { id: "ALT-007", type: "Debit anormal", classification: "Fuite", location: "Parcelles Assainies - Canalisation C12", severity: "faible", probability: 45, status: "Surveillance", hoursAgo: 12 },
+    { id: "ALT-008", type: "Temperature", classification: "Contamination", location: "Reservoir Parcelles - Zone A", severity: "faible", probability: 38, status: "Surveillance", hoursAgo: 16 },
   ] as const
 
   const insertAlert = db.prepare(`
@@ -472,11 +484,11 @@ function seedMaintenance(db: DatabaseSync) {
   }
 
   const tasks = [
-    { id: "MT-001", asset: "Pompe #3 - Station Est", type: "Remplacement joint", priority: "Haute", dueDays: 1, confidence: 94, status: "Urgent", alertId: "ALT-002" },
-    { id: "MT-002", asset: "Vanne #45 - Zone Industrielle", type: "Calibration", priority: "Moyenne", dueDays: 3, confidence: 87, status: "Planifie", alertId: "ALT-006" },
-    { id: "MT-003", asset: "Capteur #112 - Reservoir Nord", type: "Nettoyage", priority: "Basse", dueDays: 5, confidence: 72, status: "Planifie", alertId: "ALT-003" },
-    { id: "MT-004", asset: "Canalisation C12 - Secteur 5", type: "Inspection", priority: "Haute", dueDays: 7, confidence: 68, status: "Planifie", alertId: "ALT-007" },
-    { id: "MT-005", asset: "Pompe #7 - Station Ouest", type: "Remplacement filtre", priority: "Moyenne", dueDays: 10, confidence: 62, status: "Planifie", alertId: "ALT-005" },
+    { id: "MT-001", asset: "Pompe #3 - Station Pompage Fann", type: "Remplacement joint", priority: "Haute", dueDays: 1, confidence: 94, status: "Urgent", alertId: "ALT-002" },
+    { id: "MT-002", asset: "Vanne #45 - Station Pompage HLM", type: "Calibration", priority: "Moyenne", dueDays: 3, confidence: 87, status: "Planifie", alertId: "ALT-006" },
+    { id: "MT-003", asset: "Capteur #112 - Reservoir Pikine", type: "Nettoyage", priority: "Basse", dueDays: 5, confidence: 72, status: "Planifie", alertId: "ALT-003" },
+    { id: "MT-004", asset: "Canalisation C12 - Parcelles Assainies", type: "Inspection", priority: "Haute", dueDays: 7, confidence: 68, status: "Planifie", alertId: "ALT-007" },
+    { id: "MT-005", asset: "Pompe #7 - Station Pompage Guediawaye", type: "Remplacement filtre", priority: "Moyenne", dueDays: 10, confidence: 62, status: "Planifie", alertId: "ALT-005" },
   ] as const
 
   const insertTask = db.prepare(`
@@ -517,7 +529,7 @@ function seedReadings(db: DatabaseSync) {
       insertQuality.run("ph", phValues[index], "", recordedAt)
       insertQuality.run("turbidity", turbidityValues[index], "NTU", recordedAt)
       insertQuality.run("chlorine", 0.5 + ((index % 3) - 1) * 0.05, "mg/L", recordedAt)
-      insertQuality.run("temperature", 18.5 + ((index % 2) - 0.5) * 0.6, "C", recordedAt)
+      insertQuality.run("temperature", 27.0 + ((index % 2) - 0.5) * 0.8, "C", recordedAt)
       insertQuality.run("conductivity", 420 + (index % 4) * 8, "uS/cm", recordedAt)
       insertQuality.run("coliform", 0, "CFU/100mL", recordedAt)
     }
@@ -530,8 +542,8 @@ function seedReadings(db: DatabaseSync) {
       VALUES (?, ?, ?)
     `)
 
-    const debitValues = [1200, 800, 600, 900, 1500, 1800, 2000, 1900, 1700, 1600, 1400, 1100]
-    const pressionValues = [3.2, 3.1, 3.0, 3.1, 3.3, 3.4, 3.2, 3.3, 3.2, 3.1, 3.2, 3.1]
+    const debitValues = [480, 320, 240, 360, 600, 720, 800, 760, 680, 640, 560, 440]
+    const pressionValues = [2.4, 2.3, 2.2, 2.3, 2.5, 2.6, 2.4, 2.5, 2.4, 2.3, 2.4, 2.3]
 
     for (let index = 0; index < debitValues.length; index += 1) {
       const hoursAgo = (debitValues.length - index - 1) * 2
@@ -597,7 +609,7 @@ function seedSimulations(db: DatabaseSync) {
   const simulations = [
     {
       id: "SIM-001",
-      name: "Secheresse Estivale 2026",
+      name: "Saison Seche Dakar 2026",
       scenario: "Secheresse",
       status: "Termine",
       resultRisk: "Moyen",
@@ -606,7 +618,7 @@ function seedSimulations(db: DatabaseSync) {
     },
     {
       id: "SIM-002",
-      name: "Inondation Flash - Zone Sud",
+      name: "Inondation Hivernage - Zone Pikine",
       scenario: "Inondation",
       status: "Termine",
       resultRisk: "Eleve",
@@ -615,7 +627,7 @@ function seedSimulations(db: DatabaseSync) {
     },
     {
       id: "SIM-003",
-      name: "Contamination Reservoir A",
+      name: "Contamination Reservoir Parcelles",
       scenario: "Contamination",
       status: "En cours",
       resultRisk: "-",
@@ -624,7 +636,7 @@ function seedSimulations(db: DatabaseSync) {
     },
     {
       id: "SIM-004",
-      name: "Panne Electrique Generale",
+      name: "Delestage Prolonge - SENELEC",
       scenario: "Panne",
       status: "Planifie",
       resultRisk: "-",
@@ -633,7 +645,7 @@ function seedSimulations(db: DatabaseSync) {
     },
     {
       id: "SIM-005",
-      name: "Pic de Demande Hivernal",
+      name: "Pic Demande Saison Seche",
       scenario: "Surcharge",
       status: "Termine",
       resultRisk: "Faible",
@@ -686,8 +698,8 @@ function seedSettings(db: DatabaseSync) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     1,
-    "Ville de Paris - Service des Eaux",
-    "europe-paris",
+    "SDE - Senegalaise Des Eaux, Dakar",
+    "africa-dakar",
     "aqp_sk_9f2ce1d0bd9f87d2f45f11",
     JSON.stringify({
       criticalEmail: true,
@@ -733,6 +745,34 @@ function seedMonthlyActivity(db: DatabaseSync) {
   }
 }
 
+
+function seedQuartierQuality(db: DatabaseSync) {
+  const count = db.prepare("SELECT COUNT(*) as count FROM quartier_quality").get() as { count: number }
+  if (count.count > 0) return
+
+  const now = new Date().toISOString()
+  const insert = db.prepare(`
+    INSERT INTO quartier_quality (quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const data = [
+    ["Plateau",             7.2, 0.5, 0.52, 27.1, 0, 1],
+    ["Médina",              7.1, 0.7, 0.48, 27.4, 0, 1],
+    ["Fann",                7.3, 0.6, 0.50, 26.9, 0, 1],
+    ["HLM",                 7.0, 1.8, 0.22, 28.2, 1, 0],
+    ["Grand Dakar",         6.9, 2.1, 0.18, 28.5, 2, 0],
+    ["Parcelles Assainies", 7.2, 0.9, 0.45, 27.3, 0, 1],
+    ["Pikine",              7.0, 2.6, 0.15, 28.8, 3, 0],
+    ["Guédiawaye",          6.8, 3.0, 0.12, 29.1, 4, 0],
+    ["Rufisque",            7.1, 1.1, 0.38, 27.6, 0, 1],
+  ] as const
+
+  for (const [quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe] of data) {
+    insert.run(quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe, now)
+  }
+}
+
 async function seedDatabase(db: DatabaseSync) {
   await seedUsers(db)
   seedSectors(db)
@@ -740,6 +780,7 @@ async function seedDatabase(db: DatabaseSync) {
   seedMap(db)
   seedAlerts(db)
   seedMaintenance(db)
+  seedQuartierQuality(db)
   seedReadings(db)
   seedIncidents(db)
   seedSimulations(db)

@@ -200,3 +200,43 @@ export interface AppSettings {
     retentionPeriod: "3m" | "6m" | "1y" | "5y"
   }
 }
+
+// ── Signalements Citoyens ──────────────────────────────────────────────────
+
+export interface CitizenIncident {
+  id: number
+  type: string
+  location: string
+  description: string
+  status: "Nouveau" | "En cours" | "Résolu" | "Fermé"
+  createdAt: string
+  resolvedAt: string | null
+  reporterName: string | null
+}
+
+export interface OperatorIncident {
+  id: number
+  type: string
+  location: string
+  description: string
+  status: "Nouveau" | "En cours" | "Résolu" | "Fermé"
+  createdAt: string
+  resolvedAt: string | null
+  reporterName: string | null
+  reporterEmail: string | null
+  reporterUserId: number | null
+}
+
+export interface IncidentSummary {
+  nouveau: number
+  enCours: number
+  resolu: number
+  total: number
+}
+
+// ── Qualité avec tendance ──────────────────────────────────────────────────
+
+export interface QualityParameterWithTrend extends QualityParameter {
+  trend: number[]   // 7 points (J-6 → J)
+  trendDirection: "up" | "down" | "stable"
+}
