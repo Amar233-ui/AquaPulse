@@ -15,20 +15,17 @@ export function useApiQuery<T>(url: string, initialData: T): QueryState<T> {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
-  // Track the latest url to ignore stale responses
   const latestUrl = useRef(url)
-  // Track first load vs subsequent refetches
-  const hasData = useRef(false)
+  const hasData   = useRef(false)
 
   const fetchData = useCallback(async (targetUrl: string) => {
-    // Skip empty urls (disabled queries)
     if (!targetUrl) {
       setLoading(false)
       return
     }
 
-    // Only show full loading spinner on first fetch
-    // On refetch, keep existing data visible (no flash to empty)
+    // Affiche le spinner uniquement au tout premier chargement
+    // Les refetch (avec _r=, actualiser, etc.) gardent les données existantes visibles
     if (!hasData.current) {
       setLoading(true)
     }
@@ -40,7 +37,7 @@ export function useApiQuery<T>(url: string, initialData: T): QueryState<T> {
         cache: "no-store",
       })
 
-      // Ignore if a newer request has already started
+      // Ignorer les réponses périmées si une nouvelle requête a déjà démarré
       if (latestUrl.current !== targetUrl) return
 
       const json = (await response.json()) as T & { error?: string }
@@ -57,7 +54,7 @@ export function useApiQuery<T>(url: string, initialData: T): QueryState<T> {
       hasData.current = true
       setError(null)
     } catch (requestError) {
-      // Only show error, don't clear existing data
+      // En cas d'erreur, on garde les données précédentes — on n'efface pas
       if (latestUrl.current === targetUrl) {
         setError(requestError instanceof Error ? requestError.message : "Erreur inconnue")
       }
@@ -70,7 +67,14 @@ export function useApiQuery<T>(url: string, initialData: T): QueryState<T> {
 
   useEffect(() => {
     latestUrl.current = url
-    hasData.current = false
+
+    // Ne pas réinitialiser hasData si c'est juste un refresh forcé (_r=)
+    // Cela évite le flash blanc lors des actualisations après updateStatus
+    const isForceRefresh = url.includes("_r=") || url.includes("_k=")
+    if (!isForceRefresh) {
+      hasData.current = false
+    }
+
     void fetchData(url)
   }, [url, fetchData])
 

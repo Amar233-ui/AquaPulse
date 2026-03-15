@@ -9,13 +9,18 @@ export async function PATCH(
   try {
     await requireUser(request, ["operateur", "admin"])
     const { status } = (await request.json()) as { status?: string }
+
+    // "Traité" est un alias de "Résolu" — on le normalise
+    const normalized = status === "Traité" ? "Résolu" : status
+
     const allowed = ["Nouveau", "En cours", "Résolu", "Fermé"] as const
-    if (!status || !allowed.includes(status as typeof allowed[number])) {
+    if (!normalized || !allowed.includes(normalized as typeof allowed[number])) {
       return NextResponse.json({ error: "Statut invalide" }, { status: 400 })
     }
+
     await updateIncidentStatus(
       Number(params.id),
-      status as "Nouveau" | "En cours" | "Résolu" | "Fermé"
+      normalized as "Nouveau" | "En cours" | "Résolu" | "Fermé"
     )
     return NextResponse.json({ ok: true })
   } catch (error) {
