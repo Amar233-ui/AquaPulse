@@ -68,11 +68,23 @@ const BOTTOM_MAX = 4
 
 // Hook pour fetch le nombre de nouveaux signalements en live
 function useLiveSignalementsCount(enabled: boolean) {
-  const { data } = useApiQuery<{ summary: { nouveau: number } }>(
-    enabled ? "/api/operateur/signalements" : "",
-    { summary: { nouveau: 0 } }
-  )
-  return data?.summary?.nouveau ?? 0
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    const fetchCount = async () => {
+      try {
+        const res = await fetch("/api/operateur/signalements", { credentials: "include", cache: "no-store" })
+        if (!res.ok || cancelled) return
+        const json = await res.json() as { summary: { nouveau: number } }
+        if (!cancelled) setCount(json?.summary?.nouveau ?? 0)
+      } catch {}
+    }
+    void fetchCount()
+    const id = setInterval(fetchCount, 30000) // refresh every 30s
+    return () => { cancelled = true; clearInterval(id) }
+  }, [enabled])
+  return count
 }
 
 export function DashboardSidebar({

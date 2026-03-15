@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Wifi, WifiOff, Battery, Signal } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
 import { useMemo, useState } from "react"
 
@@ -39,7 +40,7 @@ export default function CapteursPage() {
     return `/api/operateur/capteurs${suffix ? `?${suffix}` : ""}`
   }, [search])
 
-  const { data } = useApiQuery<SensorsResponse>(query, DEFAULT_DATA)
+  const { data, loading } = useApiQuery<SensorsResponse>(query, DEFAULT_DATA)
 
   return (
     <DashboardLayout role="operateur" title="Monitoring des Capteurs">
@@ -52,7 +53,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">En Ligne</p>
-                <p className="text-2xl font-bold text-foreground">{data.stats.online}</p>
+                {loading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-foreground">{data.stats.online}</p>}
               </div>
             </CardContent>
           </Card>
@@ -63,7 +64,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Batterie Faible</p>
-                <p className="text-2xl font-bold text-foreground">{data.stats.lowBattery}</p>
+                {loading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-foreground">{data.stats.lowBattery}</p>}
               </div>
             </CardContent>
           </Card>
@@ -74,7 +75,7 @@ export default function CapteursPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Hors Ligne</p>
-                <p className="text-2xl font-bold text-foreground">{data.stats.offline}</p>
+                {loading ? <Skeleton className="h-8 w-12 mt-1" /> : <p className="text-2xl font-bold text-foreground">{data.stats.offline}</p>}
               </div>
             </CardContent>
           </Card>
@@ -108,6 +109,14 @@ export default function CapteursPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {loading && data.items.length === 0 && Array.from({length: 5}).map((_,i) => (
+                  <TableRow key={i}>
+                    {Array.from({length: 7}).map((_,j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+                  </TableRow>
+                ))}
+                {!loading && data.items.length === 0 && (
+                  <TableRow><TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">Aucun capteur trouvé.</TableCell></TableRow>
+                )}
                 {data.items.map((sensor) => (
                   <TableRow key={sensor.id}>
                     <TableCell className="font-mono text-xs">{sensor.id}</TableCell>

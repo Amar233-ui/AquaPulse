@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Wrench, Clock, CheckCircle2, AlertTriangle, Calendar, ArrowRight } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import { useApiQuery } from "@/hooks/use-api-query"
 import type { MaintenanceTask } from "@/lib/types"
@@ -38,7 +39,7 @@ const priorityColors: Record<string, string> = {
 }
 
 export default function MaintenancePage() {
-  const { data } = useApiQuery<MaintenanceResponse>("/api/operateur/maintenance", DEFAULT_DATA)
+  const { data, loading } = useApiQuery<MaintenanceResponse>("/api/operateur/maintenance", DEFAULT_DATA)
 
   return (
     <DashboardLayout role="operateur" title="Maintenance Predictive">
@@ -60,6 +61,16 @@ export default function MaintenancePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
+              {loading && data.items.length === 0 && Array.from({length: 3}).map((_,i) => (
+                <div key={i} className="rounded-lg border border-border/40 bg-secondary/30 p-4 space-y-2">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              ))}
+              {!loading && data.items.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">Aucune tâche de maintenance planifiée.</p>
+              )}
               {data.items.map((task) => (
                 <div key={task.id} className="flex flex-col gap-4 rounded-lg border border-border/40 bg-secondary/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex-1 space-y-1">
