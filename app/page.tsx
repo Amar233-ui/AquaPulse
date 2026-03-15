@@ -51,7 +51,7 @@ export default function HomePage() {
               </h1>
 
               <p className="text-lg text-white/60 leading-relaxed mb-10 max-w-lg">
-                Plateforme IA de surveillance du réseau hydrique — détection de fuites, maintenance prédictive et participation citoyenne pour la SDE Sénégalaise Des Eaux.
+                Plateforme IA de surveillance du réseau hydrique  détection de fuites, maintenance prédictive et participation citoyenne pour une ville.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -249,13 +249,13 @@ export default function HomePage() {
         <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(34,211,238,0.07) 0%, transparent 65%)" }}/>
         <div className="relative mx-auto max-w-2xl px-4 text-center">
           <div className="inline-flex items-center gap-2 text-xs text-[#22d3ee] mb-6 px-4 py-1.5 rounded-full" style={{ background: "rgba(34,211,238,0.08)", border: "1px solid rgba(34,211,238,0.2)" }}>
-            <MapPin className="h-3.5 w-3.5"/> SDE — Sénégalaise Des Eaux, Dakar
+            <MapPin className="h-3.5 w-3.5"/> SDE — Société Des Eaux, une ville
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Prêt à transformer la<br/>
             <span className="gradient-text">gestion de votre réseau ?</span>
           </h2>
-          <p className="text-white/50 mb-8 leading-relaxed">AquaPulse combine IA, IoT et participation citoyenne pour une gestion résiliente et durable de l'eau à Dakar.</p>
+          <p className="text-white/50 mb-8 leading-relaxed">AquaPulse combine IA, IoT et participation citoyenne pour une gestion résiliente et durable de l'eau .</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/auth/login" className="btn-primary inline-flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm">
               Accéder à la plateforme <ArrowRight className="h-4 w-4"/>

@@ -46,9 +46,9 @@ export function Footer() {
           <div>
             <h4 className="text-sm font-semibold text-foreground">Contact</h4>
             <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-              <li>contact@aquapulse.io</li>
-              <li>+33 1 23 45 67 89</li>
-              <li>Paris, France</li>
+              <li>aquapulse.contactus@gmail.com</li>
+              <li>+221 78 520 04 18</li>
+              <li>Dakar, Senegal</li>
             </ul>
           </div>
         </div>
