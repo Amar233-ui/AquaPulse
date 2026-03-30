@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -64,7 +65,7 @@ const COMMUNITY_CONFIG = {
   confirmed: { label: "Déjà confirmé", box: "border-rose-500/25 bg-rose-500/10 text-rose-300" },
 } as const
 
-export default function SignalerPage() {
+function SignalerPageInner() {
   const searchParams = useSearchParams()
   const [reportMode, setReportMode] = useState<"network" | "eah">("network")
   const [type,          setType]          = useState("")
@@ -469,5 +470,13 @@ export default function SignalerPage() {
         </Card>
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function SignalerPage() {
+  return (
+    <Suspense>
+      <SignalerPageInner />
+    </Suspense>
   )
 }
