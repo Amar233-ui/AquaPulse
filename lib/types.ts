@@ -85,6 +85,19 @@ export interface MapData {
   connections: [string, string][]
 }
 
+export type NotificationCategory = "alertes" | "signalements" | "maintenance" | "eah"
+
+export interface NotificationItem {
+  id: string
+  category: NotificationCategory
+  title: string
+  description: string
+  href: string
+  severity: "critique" | "alerte" | "moyen" | "faible" | "normal"
+  createdAt: string
+  time: string
+}
+
 export interface OperatorDashboardData {
   kpis: {
     leakDetections: number
@@ -109,6 +122,36 @@ export interface OperatorDashboardData {
     count: number
     color: string
   }>
+  zonePressures?: Array<{
+    zone: string
+    pressure: number
+    status: "normal" | "alerte" | "critique"
+  }>
+  requiredActions?: Array<{
+    id: string
+    type: "signalement" | "alerte" | "maintenance" | "capteur" | "eah"
+    label: string
+    time: string
+    urgency: "high" | "medium" | "low"
+    href: string
+    source: "db" | "ai" | "hybrid"
+  }>
+  activityFeed?: Array<{
+    id: string
+    kind: "alerte" | "signalement" | "maintenance" | "eah"
+    title: string
+    subtitle: string
+    time: string
+    severity: "critique" | "alerte" | "moyen" | "faible" | "normal"
+    source: "ai" | "historique" | "terrain" | "maintenance" | "eah" | "hybrid"
+    href: string
+    ctaLabel: string
+  }>
+  systemStatus?: {
+    label: string
+    tone: "normal" | "warning" | "critical"
+  }
+  ai_available?: boolean
 }
 
 export interface OperatorAlert {
@@ -120,6 +163,8 @@ export interface OperatorAlert {
   probability: string
   date: string
   status: string
+  description?: string
+  source_type?: "ai_generated" | "db" | "manual"
 }
 
 export interface MaintenanceTask {
@@ -130,6 +175,12 @@ export interface MaintenanceTask {
   dueDate: string
   confidence: number
   status: "Urgent" | "Planifie" | "En cours" | "Termine"
+  source?: "ai" | "db"
+  alertId?: string | null
+  eahFacilityId?: number | null
+  assignedOperatorId?: number | null
+  assignedOperatorName?: string | null
+  assignedAt?: string | null
 }
 
 export interface SensorItem {
@@ -225,6 +276,11 @@ export interface OperatorIncident {
   reporterName: string | null
   reporterEmail: string | null
   reporterUserId: number | null
+  eahFacilityId?: number | null
+  eahFacilityName?: string | null
+  assignedOperatorId?: number | null
+  assignedOperatorName?: string | null
+  assignedAt?: string | null
 }
 
 export interface IncidentSummary {
@@ -239,4 +295,57 @@ export interface IncidentSummary {
 export interface QualityParameterWithTrend extends QualityParameter {
   trend: number[]   // 7 points (J-6 → J)
   trendDirection: "up" | "down" | "stable"
+}
+
+// ── Module EAH (Eau, Assainissement, Hygiène) ─────────────────────────────
+
+export type EahFacilityType =
+  | "latrine_publique"
+  | "point_eau_gratuit"
+  | "borne_fontaine"
+  | "bloc_hygiene"
+  | "station_lavage_mains"
+
+export type EahFacilityStatus = "operationnel" | "degradé" | "hors_service"
+
+export interface EahFacility {
+  id: number
+  name: string
+  type: EahFacilityType
+  quartier: string
+  address: string
+  status: EahFacilityStatus
+  gender_accessible: boolean   // accessible femmes / hygiène menstruelle
+  disabled_accessible: boolean
+  school_nearby: boolean
+  last_inspection: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  community_signal_count?: number
+  community_unique_reporters?: number
+  community_confirmation?: "none" | "to_verify" | "probable" | "confirmed"
+  last_community_report_at?: string | null
+}
+
+export interface EahZoneStat {
+  quartier: string
+  total: number
+  operationnel: number
+  hors_service: number
+  score: number          // 0–100 score d'accès EAH
+  has_gender_facility: boolean
+}
+
+export interface EahDashboardData {
+  stats: {
+    total_facilities: number
+    operational: number
+    degraded: number
+    out_of_service: number
+    gender_accessible: number
+    schools_covered: number
+  }
+  zone_stats: EahZoneStat[]
+  recent_reports: EahFacility[]
 }

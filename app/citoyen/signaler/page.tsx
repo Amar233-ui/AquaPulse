@@ -1,5 +1,6 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { MapPin, Send, Camera, CheckCircle, X } from "lucide-react"
-import { FormEvent, useRef, useState } from "react"
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 // Zones surveillées par AquaPulse — identiques aux zones réseau IA
 const QUARTIERS = [
@@ -23,13 +24,57 @@ const QUARTIERS = [
   "Rufisque",
 ]
 
+type EahFacilityOption = {
+  id: number
+  name: string
+  quartier: string
+  status: "operationnel" | "degradé" | "hors_service"
+  community_signal_count?: number
+  community_confirmation?: "none" | "to_verify" | "probable" | "confirmed"
+}
+
+const REPORT_MODES = {
+  network: "network",
+  eah: "eah",
+} as const
+
+const NETWORK_TYPES = [
+  { value: "fuite", label: "💧 Fuite d'eau" },
+  { value: "qualite", label: "🧪 Problème de qualité" },
+  { value: "pression", label: "⚡ Pression anormale" },
+  { value: "coupure", label: "🚫 Coupure d'eau" },
+  { value: "odeur", label: "👃 Odeur suspecte" },
+  { value: "contamination", label: "⚠️ Contamination suspectée" },
+  { value: "autre", label: "📋 Autre" },
+] as const
+
+const EAH_TYPES = [
+  { value: "panne_eah", label: "🚰 Site hors service" },
+  { value: "hygiene", label: "🧼 Problème d'hygiène" },
+  { value: "accessibilite", label: "♿ Problème d'accès" },
+  { value: "lavage_mains", label: "🖐 Station de lavage défaillante" },
+  { value: "latrine", label: "🚻 Latrine / toilettes non fonctionnelles" },
+  { value: "autre_eah", label: "📋 Autre problème EAH" },
+] as const
+
+const COMMUNITY_CONFIG = {
+  none: { label: "Aucun signalement", box: "border-slate-500/25 bg-slate-500/10 text-slate-300" },
+  to_verify: { label: "À vérifier", box: "border-amber-500/25 bg-amber-500/10 text-amber-300" },
+  probable: { label: "Probable", box: "border-cyan-500/25 bg-cyan-500/10 text-cyan-300" },
+  confirmed: { label: "Déjà confirmé", box: "border-rose-500/25 bg-rose-500/10 text-rose-300" },
+} as const
+
 export default function SignalerPage() {
+  const searchParams = useSearchParams()
+  const [reportMode, setReportMode] = useState<"network" | "eah">("network")
   const [type,          setType]          = useState("")
   const [quartier,      setQuartier]      = useState("")
   const [adresseDetail, setAdresseDetail] = useState("")
   const [description,   setDescription]  = useState("")
   const [reporterName,  setReporterName]  = useState("")
   const [reporterEmail, setReporterEmail] = useState("")
+  const [selectedEahId, setSelectedEahId] = useState("")
+  const [eahOptions, setEahOptions] = useState<EahFacilityOption[]>([])
   const [photo,         setPhoto]         = useState<File | null>(null)
   const [photoPreview,  setPhotoPreview]  = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
@@ -40,11 +85,62 @@ export default function SignalerPage() {
 
   // La localisation envoyée à l'API = "Quartier — adresse"
   // La partie quartier permet à l'IA de matcher avec les alertes réseau
-  const location = quartier
-    ? adresseDetail.trim()
-      ? `${quartier} — ${adresseDetail.trim()}`
-      : quartier
-    : adresseDetail.trim()
+  const selectedFacility = useMemo(
+    () => eahOptions.find((facility) => String(facility.id) === selectedEahId) ?? null,
+    [eahOptions, selectedEahId],
+  )
+  const availableTypes = reportMode === REPORT_MODES.eah ? EAH_TYPES : NETWORK_TYPES
+  const selectedFacilityCommunity = COMMUNITY_CONFIG[selectedFacility?.community_confirmation ?? "none"]
+
+  const location = selectedFacility
+    ? `${selectedFacility.quartier} — ${selectedFacility.name}${adresseDetail.trim() ? ` — ${adresseDetail.trim()}` : ""}`
+    : quartier
+      ? adresseDetail.trim()
+        ? `${quartier} — ${adresseDetail.trim()}`
+        : quartier
+      : adresseDetail.trim()
+
+  useEffect(() => {
+    const initialQuartier = searchParams.get("quartier")
+    if (initialQuartier && QUARTIERS.includes(initialQuartier)) {
+      setQuartier((current) => current || initialQuartier)
+    }
+    if (searchParams.get("mode") === REPORT_MODES.eah || searchParams.get("eah")) {
+      setReportMode(REPORT_MODES.eah)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!quartier) {
+      setEahOptions([])
+      setSelectedEahId("")
+      return
+    }
+
+    const ctrl = new AbortController()
+    fetch(`/api/citoyen/eah?quartier=${encodeURIComponent(quartier)}`, {
+      credentials: "include",
+      signal: ctrl.signal,
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => {
+        if (!ctrl.signal.aborted) {
+          setEahOptions((json?.items ?? []) as EahFacilityOption[])
+        }
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setEahOptions([])
+      })
+
+    return () => ctrl.abort()
+  }, [quartier])
+
+  useEffect(() => {
+    const initialEah = searchParams.get("eah")
+    if (initialEah && eahOptions.some((facility) => String(facility.id) === initialEah)) {
+      setSelectedEahId((current) => current || initialEah)
+    }
+  }, [searchParams, eahOptions])
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -62,8 +158,9 @@ export default function SignalerPage() {
   }
 
   const resetForm = () => {
-    setType(""); setQuartier(""); setAdresseDetail("")
+    setType(""); setQuartier(""); setAdresseDetail(""); setReportMode(REPORT_MODES.network)
     setDescription(""); setReporterName(""); setReporterEmail("")
+    setSelectedEahId(""); setEahOptions([])
     removePhoto(); setStatusMessage(null); setIncidentId(null); setError(null)
   }
 
@@ -76,13 +173,25 @@ export default function SignalerPage() {
       return
     }
 
+    if (reportMode === REPORT_MODES.eah && !selectedFacility) {
+      setError("Veuillez choisir le site EAH concerné.")
+      return
+    }
+
     setLoading(true)
     try {
       const response = await fetch("/api/citoyen/incidents", {
         method:      "POST",
         headers:     { "Content-Type": "application/json" },
         credentials: "include",
-        body:        JSON.stringify({ type, location, description, reporterName, reporterEmail }),
+        body:        JSON.stringify({
+          type,
+          location,
+          description,
+          reporterName,
+          reporterEmail,
+          eahFacilityId: selectedFacility?.id ?? null,
+        }),
       })
       const json = (await response.json()) as { error?: string; incidentId?: number }
       if (!response.ok) throw new Error(json.error ?? "Envoi impossible")
@@ -113,6 +222,11 @@ export default function SignalerPage() {
               Zone : <span className="font-semibold text-teal-300">{quartier}</span>
               {adresseDetail && <> — {adresseDetail}</>}
             </p>
+            {selectedFacility && (
+              <p className="text-xs text-foreground/55 bg-card/50 rounded-lg px-4 py-2">
+                Ce signalement a été ajouté au site EAH <span className="font-semibold text-teal-300">{selectedFacility.name}</span>.
+              </p>
+            )}
             <p className="text-xs text-foreground/50">
               Nos équipes traiteront votre signalement sous 2h en cas d&apos;urgence.
             </p>
@@ -140,6 +254,36 @@ export default function SignalerPage() {
           <CardContent>
             <form className="space-y-5" onSubmit={handleSubmit}>
 
+              <div className="space-y-2">
+                <Label>Type de signalement</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => { setReportMode(REPORT_MODES.network); setSelectedEahId(""); setType("") }}
+                    className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                      reportMode === REPORT_MODES.network
+                        ? "border-teal-500/40 bg-teal-500/10 text-teal-200"
+                        : "border-border/50 bg-card/50 text-foreground/70 hover:bg-secondary/40"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">Réseau d&apos;eau</p>
+                    <p className="mt-1 text-xs text-foreground/60">Fuite, pression, qualité, coupure</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setReportMode(REPORT_MODES.eah); setType("") }}
+                    className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                      reportMode === REPORT_MODES.eah
+                        ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+                        : "border-border/50 bg-card/50 text-foreground/70 hover:bg-secondary/40"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">Site EAH</p>
+                    <p className="mt-1 text-xs text-foreground/60">Latrine, borne-fontaine, lavage des mains, hygiène</p>
+                  </button>
+                </div>
+              </div>
+
               {/* Type */}
               <div className="space-y-2">
                 <Label htmlFor="type">Type de problème <span className="text-red-400">*</span></Label>
@@ -148,13 +292,9 @@ export default function SignalerPage() {
                     <SelectValue placeholder="Sélectionnez le type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fuite">💧 Fuite d&apos;eau</SelectItem>
-                    <SelectItem value="qualite">🧪 Problème de qualité</SelectItem>
-                    <SelectItem value="pression">⚡ Pression anormale</SelectItem>
-                    <SelectItem value="coupure">🚫 Coupure d&apos;eau</SelectItem>
-                    <SelectItem value="odeur">👃 Odeur suspecte</SelectItem>
-                    <SelectItem value="contamination">⚠️ Contamination suspectée</SelectItem>
-                    <SelectItem value="autre">📋 Autre</SelectItem>
+                    {availableTypes.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -180,10 +320,47 @@ export default function SignalerPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Sélectionner votre quartier permet à l&apos;IA de corréler votre signalement
-                  avec les alertes capteurs de cette zone.
+                  {reportMode === REPORT_MODES.eah
+                    ? "Choisissez le quartier du site EAH concerné pour retrouver la bonne installation."
+                    : "Sélectionner votre quartier permet à l'IA de corréler votre signalement avec les alertes capteurs de cette zone."}
                 </p>
               </div>
+
+              {quartier && eahOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="eah-site">
+                    Site EAH concerné <span className="text-foreground/50 text-xs font-normal">{reportMode === REPORT_MODES.eah ? "(obligatoire)" : "(optionnel)"}</span>
+                  </Label>
+                  <Select value={selectedEahId} onValueChange={setSelectedEahId}>
+                    <SelectTrigger id="eah-site">
+                      <SelectValue placeholder="Choisir un site EAH dans ce quartier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eahOptions.map((facility) => (
+                        <SelectItem key={facility.id} value={String(facility.id)}>
+                          {facility.name} · {facility.status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {reportMode === REPORT_MODES.eah
+                      ? "Votre signalement comptera dans la confirmation communautaire de ce site EAH."
+                      : "Si vous sélectionnez un site EAH, votre signalement comptera dans sa confirmation communautaire."}
+                  </p>
+                  {selectedFacility && (
+                    <div className={`rounded-xl border px-4 py-3 ${selectedFacilityCommunity.box}`}>
+                      <p className="text-sm font-semibold">{selectedFacility.name}</p>
+                      <p className="mt-1 text-xs">
+                        {selectedFacility.community_signal_count ?? 0} citoyen{(selectedFacility.community_signal_count ?? 0) > 1 ? "s ont" : " a"} déjà signalé ce site.
+                      </p>
+                      <p className="mt-1 text-[11px] font-medium">
+                        Niveau actuel: {selectedFacilityCommunity.label}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Adresse précise optionnelle */}
               <div className="space-y-2">
@@ -195,7 +372,13 @@ export default function SignalerPage() {
                   <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="adresse"
-                    placeholder="Ex : Rue de la Paix, n°12"
+                    placeholder={
+                      selectedFacility
+                        ? "Précision complémentaire (optionnel)"
+                        : reportMode === REPORT_MODES.eah
+                          ? "Ex : bloc nord, porte cassée"
+                          : "Ex : Rue de la Paix, n°12"
+                    }
                     className="pl-9"
                     value={adresseDetail}
                     onChange={e => setAdresseDetail(e.target.value)}
@@ -208,7 +391,11 @@ export default function SignalerPage() {
                 <Label htmlFor="description">Description <span className="text-red-400">*</span></Label>
                 <Textarea
                   id="description"
-                  placeholder="Décrivez le problème en détail — depuis quand, ce que vous observez..."
+                  placeholder={
+                    reportMode === REPORT_MODES.eah
+                      ? "Décrivez le problème du site EAH: hors service, manque d'eau, problème d'hygiène, accès impossible..."
+                      : "Décrivez le problème en détail — depuis quand, ce que vous observez..."
+                  }
                   rows={4}
                   value={description}
                   onChange={e => setDescription(e.target.value)}

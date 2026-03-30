@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       description?: string
       reporterName?: string
       reporterEmail?: string
+      eahFacilityId?: number
     }
 
     const type = body.type?.trim() ?? ""
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
       description,
       reporterName: body.reporterName,
       reporterEmail: body.reporterEmail,
+      eahFacilityId: body.eahFacilityId ?? null,
     })
 
     return NextResponse.json({ ok: true, incidentId: incident.id }, { status: 201 })

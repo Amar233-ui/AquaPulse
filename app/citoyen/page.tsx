@@ -132,17 +132,19 @@ function getContextualAdvice(indicators: CitizenDashboardData["waterQualityIndic
 type Tab = "eau" | "alertes" | "signalements"
 
 const STATUS_COLORS: Record<string, string> = {
-  "Nouveau": "bg-blue-500/15 text-blue-400 border border-blue-500/25",
+  "Nouveau":  "bg-blue-500/15 text-blue-400 border border-blue-500/25",
   "En cours": "bg-orange-500/15 text-orange-400 border border-orange-500/25",
-  "Résolu": "bg-teal-500/15 text-teal-400 border border-teal-500/25",
-  "Fermé": "bg-slate-500/15 text-slate-400 border border-slate-500/25",
+  "Analyse":  "bg-orange-500/15 text-orange-400 border border-orange-500/25",
+  "Résolu":   "bg-teal-500/15 text-teal-400 border border-teal-500/25",
+  "Fermé":    "bg-slate-500/15 text-slate-400 border border-slate-500/25",
 }
 
 export default function CitoyenDashboard() {
   const router = useRouter()
   const [quartier, setQuartier] = useState("Plateau")
   const [onglet, setOnglet] = useState<Tab>("eau")
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshKey, setRefreshKey]  = useState(0)
+  const [incRefreshKey, setIncRefreshKey] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [quickView, setQuickView] = useState(false)
   const [alertesActives, setAlertesActives] = useState(true)
@@ -164,7 +166,7 @@ export default function CitoyenDashboard() {
     EMPTY_DATA
   )
   const { data: incidents, loading: incLoading } = useApiQuery<CitizenIncident[]>(
-    `/api/citoyen/mes-signalements?_k=${refreshKey}`,
+    `/api/citoyen/mes-signalements?_k=${incRefreshKey}`,
     []
   )
 

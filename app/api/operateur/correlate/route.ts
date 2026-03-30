@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { authErrorResponse, requireUser } from "@/lib/server/session"
 
-const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://localhost:8000"
+const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8001"
 const AI_TOKEN    = process.env.AI_SERVICE_TOKEN ?? "aquapulse-ai-dev-token"
 
 export interface Correlation {
@@ -21,6 +21,8 @@ export interface CorrelateResponse {
   correlations:   Correlation[]
   hasCorrelation: boolean
   analyzed:       number
+  mode?:          "network" | "eah"
+  message?:       string
 }
 
 export async function POST(request: Request) {
@@ -33,6 +35,32 @@ export async function POST(request: Request) {
       location:    string
       description: string
       createdAt?:  string
+      eahFacilityId?: number | null
+      eahFacilityName?: string | null
+    }
+
+    const normalizedType = body.type.toLowerCase().trim()
+    const isEahIncident =
+      Boolean(body.eahFacilityId) ||
+      normalizedType.includes("eah") ||
+      normalizedType.includes("latrine") ||
+      normalizedType.includes("hygiene") ||
+      normalizedType.includes("lavage_mains") ||
+      normalizedType.includes("panne_eah") ||
+      normalizedType.includes("autre_eah") ||
+      Boolean(body.eahFacilityName)
+
+    if (isEahIncident) {
+      return NextResponse.json({
+        incidentId: body.id,
+        correlations: [],
+        hasCorrelation: false,
+        analyzed: 0,
+        mode: "eah",
+        message: body.eahFacilityName
+          ? `Signalement EAH lié à ${body.eahFacilityName} : la corrélation réseau IA n'est pas applicable.`
+          : "Signalement EAH : la corrélation réseau IA n'est pas applicable.",
+      } satisfies CorrelateResponse)
     }
 
     // Appel au service IA Python

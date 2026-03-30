@@ -10,6 +10,8 @@ import type {
   MapData,
   MapNode,
   MaintenanceTask,
+  NotificationCategory,
+  NotificationItem,
   OperatorAlert,
   OperatorDashboardData,
   SensorItem,
@@ -67,6 +69,28 @@ function initialsFromName(name: string): string {
   }
 
   return `${tokens[0][0] ?? ""}${tokens[1][0] ?? ""}`.toUpperCase()
+}
+
+async function getNotificationLastSeen(userId: number, categories: NotificationCategory[]): Promise<Map<NotificationCategory, string>> {
+  const db = await getDb()
+  const placeholders = categories.map(() => "?").join(", ")
+  const rows = db
+    .prepare(
+      `SELECT category, last_seen_at as lastSeenAt
+       FROM notification_reads
+       WHERE user_id = ? AND category IN (${placeholders})`,
+    )
+    .all(userId, ...categories) as Array<{ category: NotificationCategory; lastSeenAt: string }>
+
+  return new Map(rows.map((row) => [row.category, row.lastSeenAt]))
+}
+
+function isUnread(createdAt: string, lastSeenAt?: string): boolean {
+  if (!lastSeenAt) {
+    return true
+  }
+
+  return new Date(createdAt).getTime() > new Date(lastSeenAt).getTime()
 }
 
 async function getLatestMetrics(): Promise<Record<string, LatestMetricRow>> {
@@ -381,6 +405,7 @@ export async function createIncident(input: {
   description: string
   reporterName?: string
   reporterEmail?: string
+  eahFacilityId?: number | null
 }): Promise<{ id: number }> {
   const db = await getDb()
 
@@ -394,8 +419,9 @@ export async function createIncident(input: {
         reporter_name,
         reporter_email,
         status,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'Nouveau', ?)`,
+        created_at,
+        eah_facility_id
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Nouveau', ?, ?)`,
     )
     .run(
       input.reporterUserId ?? null,
@@ -405,6 +431,7 @@ export async function createIncident(input: {
       input.reporterName ?? null,
       input.reporterEmail ?? null,
       new Date().toISOString(),
+      input.eahFacilityId ?? null,
     )
 
   return { id: Number(result.lastInsertRowid) }
@@ -540,6 +567,184 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
 
   const statusMap = new Map(byStatus.map((item) => [item.status, item.count]))
 
+  const sectorRows = db
+    .prepare(
+      `SELECT name, pressure, status
+       FROM sectors
+       ORDER BY pressure ASC, name ASC`,
+    )
+    .all() as Array<{
+      name: string
+      pressure: number
+      status: "normal" | "alerte" | "critique"
+    }>
+
+  const urgentMaintenanceRows = db
+    .prepare(
+      `SELECT id, asset, status, due_date as dueDate
+       FROM maintenance_tasks
+       WHERE status IN ('Urgent', 'En cours')
+       ORDER BY CASE status WHEN 'Urgent' THEN 0 ELSE 1 END, due_date ASC
+       LIMIT 3`,
+    )
+    .all() as Array<{
+      id: string
+      asset: string
+      status: string
+      dueDate: string
+    }>
+
+  const newIncidentRows = db
+    .prepare(
+      `SELECT id, type, location, created_at as createdAt
+       FROM incidents
+       WHERE status = 'Nouveau'
+       ORDER BY datetime(created_at) DESC
+       LIMIT 3`,
+    )
+    .all() as Array<{
+      id: number
+      type: string
+      location: string
+      createdAt: string
+    }>
+
+  const actionAlertRows = db
+    .prepare(
+      `SELECT id, type, location, severity, created_at as createdAt
+       FROM alerts
+       WHERE severity IN ('critique', 'alerte')
+       ORDER BY CASE severity WHEN 'critique' THEN 0 ELSE 1 END, datetime(created_at) DESC
+       LIMIT 3`,
+    )
+    .all() as Array<{
+      id: string
+      type: string
+      location: string
+      severity: "critique" | "alerte"
+      createdAt: string
+    }>
+
+  const eahActionRows = db
+    .prepare(
+      `SELECT id, name, quartier, status, updated_at as updatedAt
+       FROM eah_facilities
+       WHERE status IN ('hors_service', 'degradé')
+       ORDER BY CASE status WHEN 'hors_service' THEN 0 ELSE 1 END, datetime(updated_at) DESC
+       LIMIT 3`,
+    )
+    .all() as Array<{
+      id: number
+      name: string
+      quartier: string
+      status: "hors_service" | "degradé"
+      updatedAt: string
+    }>
+
+  const requiredActions = [
+    ...actionAlertRows.map((row) => ({
+      id: `alert-${row.id}`,
+      type: "alerte" as const,
+      label: `${row.type} — ${row.location}`,
+      time: formatRelativeTime(row.createdAt),
+      urgency: row.severity === "critique" ? "high" as const : "medium" as const,
+      href: "/operateur/alertes",
+      source: "db" as const,
+    })),
+    ...newIncidentRows.map((row) => ({
+      id: `incident-${row.id}`,
+      type: "signalement" as const,
+      label: `${row.type} — ${row.location}`,
+      time: formatRelativeTime(row.createdAt),
+      urgency: "high" as const,
+      href: "/operateur/signalements",
+      source: "db" as const,
+    })),
+    ...urgentMaintenanceRows.map((row) => ({
+      id: `maintenance-${row.id}`,
+      type: "maintenance" as const,
+      label: `${row.asset}`,
+      time: row.status === "Urgent" ? "immédiat" : `échéance ${row.dueDate}`,
+      urgency: row.status === "Urgent" ? "high" as const : "medium" as const,
+      href: "/operateur/maintenance",
+      source: "hybrid" as const,
+    })),
+    ...eahActionRows.map((row) => ({
+      id: `eah-${row.id}`,
+      type: "eah" as const,
+      label: `${row.name} — ${row.status === "hors_service" ? "hors service" : "dégradé"}`,
+      time: formatRelativeTime(row.updatedAt),
+      urgency: row.status === "hors_service" ? "high" as const : "medium" as const,
+      href: "/operateur/eah",
+      source: "db" as const,
+    })),
+  ]
+    .sort((a, b) => {
+      const rank = (urgency: "high" | "medium" | "low") => urgency === "high" ? 0 : urgency === "medium" ? 1 : 2
+      return rank(a.urgency) - rank(b.urgency)
+    })
+    .slice(0, 6)
+
+  const activityFeed = [
+    ...alertRows.slice(0, 3).map((row) => ({
+      id: `feed-alert-${row.id}`,
+      kind: "alerte" as const,
+      title: row.type,
+      subtitle: `${row.location} • ${row.probability}% de confiance`,
+      time: formatRelativeTime(row.createdAt),
+      severity: row.severity,
+      source: "historique" as const,
+      href: "/operateur/alertes",
+      ctaLabel: "Voir l'alerte",
+    })),
+    ...newIncidentRows.slice(0, 2).map((row) => ({
+      id: `feed-incident-${row.id}`,
+      kind: "signalement" as const,
+      title: row.type,
+      subtitle: `${row.location} • Nouveau signalement citoyen`,
+      time: formatRelativeTime(row.createdAt),
+      severity: "alerte" as const,
+      source: "terrain" as const,
+      href: "/operateur/signalements",
+      ctaLabel: "Traiter",
+    })),
+    ...urgentMaintenanceRows.slice(0, 2).map((row) => ({
+      id: `feed-maintenance-${row.id}`,
+      kind: "maintenance" as const,
+      title: row.asset,
+      subtitle: row.status === "Urgent" ? "Intervention immédiate recommandée" : `Suivi en cours • échéance ${row.dueDate}`,
+      time: row.status === "Urgent" ? "maintenant" : `pour ${row.dueDate}`,
+      severity: row.status === "Urgent" ? "critique" as const : "moyen" as const,
+      source: "maintenance" as const,
+      href: "/operateur/maintenance",
+      ctaLabel: "Ouvrir la tâche",
+    })),
+    ...eahActionRows.slice(0, 2).map((row) => ({
+      id: `feed-eah-${row.id}`,
+      kind: "eah" as const,
+      title: row.name,
+      subtitle: `${row.quartier} • ${row.status === "hors_service" ? "hors service" : "dégradé"}`,
+      time: formatRelativeTime(row.updatedAt),
+      severity: row.status === "hors_service" ? "critique" as const : "moyen" as const,
+      source: "eah" as const,
+      href: "/operateur/eah",
+      ctaLabel: "Voir le site",
+    })),
+  ]
+    .sort((a, b) => {
+      const severityRank = (severity: "critique" | "alerte" | "moyen" | "faible" | "normal") =>
+        severity === "critique" ? 0 : severity === "alerte" ? 1 : severity === "moyen" ? 2 : severity === "faible" ? 3 : 4
+      return severityRank(a.severity) - severityRank(b.severity)
+    })
+    .slice(0, 7)
+
+  const systemStatus =
+    criticalAlerts.value > 0 || urgentMaintenanceRows.some((row) => row.status === "Urgent")
+      ? { label: "Sous tension", tone: "critical" as const }
+      : activeAlerts.value > 0 || eahActionRows.length > 0 || newIncidentRows.length > 0
+        ? { label: "Interventions requises", tone: "warning" as const }
+        : { label: "Réseau stable", tone: "normal" as const }
+
   return {
     kpis: {
       leakDetections: leakDetections.value,
@@ -564,6 +769,14 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
       { label: "Alerte", count: statusMap.get("alerte") ?? 0, color: "bg-warning" },
       { label: "Hors ligne", count: statusMap.get("inactif") ?? 0, color: "bg-destructive" },
     ],
+    zonePressures: sectorRows.map((row) => ({
+      zone: row.name,
+      pressure: Number(toFixedString(row.pressure, 1)),
+      status: row.status,
+    })),
+    requiredActions,
+    activityFeed,
+    systemStatus,
   }
 }
 
@@ -599,7 +812,8 @@ export async function getOperatorAlerts(filters?: {
 
   const rows = db
     .prepare(
-      `SELECT id, type, classification, location, severity, probability, status, created_at as createdAt
+      `SELECT id, type, classification, location, severity, probability, status,
+              description, created_at as createdAt
        FROM alerts
        ${whereSql}
        ORDER BY datetime(created_at) DESC`,
@@ -612,6 +826,7 @@ export async function getOperatorAlerts(filters?: {
     severity: "critique" | "alerte" | "moyen" | "faible"
     probability: number
     status: string
+    description: string | null
     createdAt: string
   }>
 
@@ -641,6 +856,8 @@ export async function getOperatorAlerts(filters?: {
       probability: `${row.probability}%`,
       date: toDisplayDate(row.createdAt),
       status: row.status,
+      description: row.description ?? "",
+      source_type: "db",
     })),
   }
 }
@@ -1219,10 +1436,166 @@ export async function getUserById(id: number): Promise<{ id: number; name: strin
   }
 }
 
-export async function getNotificationCount(role: UserRole): Promise<number> {
+export async function getUnreadNotifications(user: { id: number; role: UserRole }): Promise<NotificationItem[]> {
+  const db = await getDb()
+
+  if (user.role === "operateur") {
+    const categories: NotificationCategory[] = ["alertes", "signalements", "maintenance", "eah"]
+    const lastSeen = await getNotificationLastSeen(user.id, categories)
+
+    const alertRows = db
+      .prepare(
+        `SELECT id, type, location, severity, created_at as createdAt
+         FROM alerts
+         WHERE severity IN ('critique', 'alerte')
+           AND status IN ('En cours', 'Analyse', 'Investigation')
+         ORDER BY datetime(created_at) DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{ id: string; type: string; location: string; severity: NotificationItem["severity"]; createdAt: string }>
+
+    const incidentRows = db
+      .prepare(
+        `SELECT id, type, location, created_at as createdAt
+         FROM incidents
+         WHERE status = 'Nouveau'
+         ORDER BY datetime(created_at) DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{ id: number; type: string; location: string; createdAt: string }>
+
+    const maintenanceRows = db
+      .prepare(
+        `SELECT id, asset, status, created_at as createdAt
+         FROM maintenance_tasks
+         WHERE status IN ('Urgent', 'En cours')
+         ORDER BY datetime(created_at) DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{ id: string; asset: string; status: string; createdAt: string }>
+
+    const eahRows = db
+      .prepare(
+        `SELECT id, name, quartier, status, updated_at as updatedAt
+         FROM eah_facilities
+         WHERE status IN ('hors_service', 'degradé')
+         ORDER BY datetime(updated_at) DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{ id: number; name: string; quartier: string; status: string; updatedAt: string }>
+
+    const items: NotificationItem[] = [
+      ...alertRows
+        .filter((row) => isUnread(row.createdAt, lastSeen.get("alertes")))
+        .map((row) => ({
+          id: `alert-${row.id}`,
+          category: "alertes" as const,
+          title: row.type,
+          description: `${row.location} • alerte opérateur active`,
+          href: "/operateur/alertes",
+          severity: row.severity,
+          createdAt: row.createdAt,
+          time: formatRelativeTime(row.createdAt),
+        })),
+      ...incidentRows
+        .filter((row) => isUnread(row.createdAt, lastSeen.get("signalements")))
+        .map((row) => ({
+          id: `incident-${row.id}`,
+          category: "signalements" as const,
+          title: row.type,
+          description: `${row.location} • nouveau signalement citoyen`,
+          href: "/operateur/signalements",
+          severity: "alerte" as const,
+          createdAt: row.createdAt,
+          time: formatRelativeTime(row.createdAt),
+        })),
+      ...maintenanceRows
+        .filter((row) => isUnread(row.createdAt, lastSeen.get("maintenance")))
+        .map((row) => ({
+          id: `maintenance-${row.id}`,
+          category: "maintenance" as const,
+          title: row.asset,
+          description: row.status === "Urgent" ? "intervention immédiate requise" : "tâche en cours à suivre",
+          href: "/operateur/maintenance",
+          severity: row.status === "Urgent" ? "critique" as const : "moyen" as const,
+          createdAt: row.createdAt,
+          time: formatRelativeTime(row.createdAt),
+        })),
+      ...eahRows
+        .filter((row) => isUnread(row.updatedAt, lastSeen.get("eah")))
+        .map((row) => ({
+          id: `eah-${row.id}`,
+          category: "eah" as const,
+          title: row.name,
+          description: `${row.quartier} • ${row.status === "hors_service" ? "hors service" : "dégradé"}`,
+          href: "/operateur/eah",
+          severity: row.status === "hors_service" ? "critique" as const : "moyen" as const,
+          createdAt: row.updatedAt,
+          time: formatRelativeTime(row.updatedAt),
+        })),
+    ]
+
+    return items
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 25)
+  }
+
+  if (user.role === "citoyen") {
+    const lastSeen = await getNotificationLastSeen(user.id, ["alertes"])
+    const rows = db
+      .prepare(
+        `SELECT id, type, location, severity, created_at as createdAt
+         FROM alerts
+         WHERE severity IN ('critique', 'alerte')
+         ORDER BY datetime(created_at) DESC
+         LIMIT 20`,
+      )
+      .all() as Array<{ id: string; type: string; location: string; severity: NotificationItem["severity"]; createdAt: string }>
+
+    return rows
+      .filter((row) => isUnread(row.createdAt, lastSeen.get("alertes")))
+      .map((row) => ({
+        id: `alert-${row.id}`,
+        category: "alertes" as const,
+        title: row.type,
+        description: row.location,
+        href: "/citoyen",
+        severity: row.severity,
+        createdAt: row.createdAt,
+        time: formatRelativeTime(row.createdAt),
+      }))
+  }
+
+  return []
+}
+
+export async function markNotificationsViewed(userId: number, categories: NotificationCategory[]): Promise<void> {
+  if (categories.length === 0) {
+    return
+  }
+
+  const db = await getDb()
+  const now = new Date().toISOString()
+  const upsert = db.prepare(`
+    INSERT INTO notification_reads (user_id, category, last_seen_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(user_id, category)
+    DO UPDATE SET last_seen_at = excluded.last_seen_at
+  `)
+
+  for (const category of categories) {
+    upsert.run(userId, category, now)
+  }
+}
+
+export async function getNotificationCount(role: UserRole, userId?: number): Promise<number> {
   const db = await getDb()
 
   if (role === "citoyen") {
+    if (userId) {
+      const items = await getUnreadNotifications({ id: userId, role })
+      return items.length
+    }
     const row = db
       .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte') AND datetime(created_at) >= datetime('now', '-24 hours')")
       .get() as { value: number }
@@ -1230,6 +1603,10 @@ export async function getNotificationCount(role: UserRole): Promise<number> {
   }
 
   if (role === "operateur") {
+    if (userId) {
+      const items = await getUnreadNotifications({ id: userId, role })
+      return items.length
+    }
     const row = db
       .prepare("SELECT COUNT(*) as value FROM alerts WHERE severity IN ('critique', 'alerte') AND status IN ('En cours', 'Analyse', 'Investigation')")
       .get() as { value: number }
@@ -1257,12 +1634,12 @@ export async function getOperatorIncidents(filters?: {
   const params: Array<string | number> = []
 
   if (filters?.search) {
-    whereClauses.push("(type LIKE ? OR location LIKE ? OR description LIKE ?)")
+    whereClauses.push("(incidents.type LIKE ? OR incidents.location LIKE ? OR incidents.description LIKE ?)")
     const t = `%${filters.search}%`
     params.push(t, t, t)
   }
   if (filters?.status && filters.status !== "all") {
-    whereClauses.push("status = ?")
+    whereClauses.push("incidents.status = ?")
     params.push(filters.status)
   }
 
@@ -1270,18 +1647,33 @@ export async function getOperatorIncidents(filters?: {
 
   const rows = db
     .prepare(
-      `SELECT id, reporter_user_id as reporterUserId, type, location, description,
-              reporter_name as reporterName, reporter_email as reporterEmail,
-              status, created_at as createdAt, resolved_at as resolvedAt
+      `SELECT incidents.id as id,
+              incidents.reporter_user_id as reporterUserId,
+              incidents.type as type,
+              incidents.location as location,
+              incidents.description as description,
+              incidents.reporter_name as reporterName,
+              incidents.reporter_email as reporterEmail,
+              incidents.status as status,
+              incidents.assigned_operator_id as assignedOperatorId,
+              incidents.assigned_operator_name as assignedOperatorName,
+              incidents.assigned_at as assignedAt,
+              incidents.created_at as createdAt,
+              incidents.resolved_at as resolvedAt,
+              incidents.eah_facility_id as eahFacilityId,
+              ef.name as eahFacilityName
        FROM incidents
+       LEFT JOIN eah_facilities ef ON ef.id = incidents.eah_facility_id
        ${where}
-       ORDER BY CASE status WHEN 'Nouveau' THEN 0 WHEN 'En cours' THEN 1 WHEN 'Résolu' THEN 2 ELSE 3 END,
-                datetime(created_at) DESC`,
+       ORDER BY CASE incidents.status WHEN 'Nouveau' THEN 0 WHEN 'En cours' THEN 1 WHEN 'Résolu' THEN 2 ELSE 3 END,
+                datetime(incidents.created_at) DESC`,
     )
     .all(...params) as Array<{
       id: number; reporterUserId: number | null; type: string; location: string
       description: string; reporterName: string | null; reporterEmail: string | null
-      status: string; createdAt: string; resolvedAt: string | null
+      status: string; assignedOperatorId: number | null; assignedOperatorName: string | null; assignedAt: string | null
+      createdAt: string; resolvedAt: string | null
+      eahFacilityId: number | null; eahFacilityName: string | null
     }>
 
   const summaryRows = db
@@ -1303,6 +1695,11 @@ export async function getOperatorIncidents(filters?: {
       reporterName: r.reporterName,
       reporterEmail: r.reporterEmail,
       reporterUserId: r.reporterUserId,
+      eahFacilityId: r.eahFacilityId,
+      eahFacilityName: r.eahFacilityName,
+      assignedOperatorId: r.assignedOperatorId,
+      assignedOperatorName: r.assignedOperatorName,
+      assignedAt: r.assignedAt ? toDisplayDate(r.assignedAt) : null,
     })),
     summary: {
       nouveau: sm.get("Nouveau") ?? 0,
@@ -1316,12 +1713,35 @@ export async function getOperatorIncidents(filters?: {
 export async function updateIncidentStatus(
   id: number,
   status: "Nouveau" | "En cours" | "Résolu" | "Fermé",
+  operator?: { id: number; name: string },
 ): Promise<void> {
   const db = await getDb()
   const resolvedAt = status === "Résolu" ? new Date().toISOString() : null
+  const assignNow = operator && (status === "En cours" || status === "Résolu" || status === "Fermé")
+
+  if (status === "Nouveau") {
+    db.prepare(
+      "UPDATE incidents SET status = ?, resolved_at = ?, assigned_operator_id = NULL, assigned_operator_name = NULL, assigned_at = NULL WHERE id = ?"
+    ).run(status, resolvedAt, id)
+    return
+  }
+
   db.prepare(
-    "UPDATE incidents SET status = ?, resolved_at = ? WHERE id = ?"
-  ).run(status, resolvedAt, id)
+    `UPDATE incidents
+     SET status = ?,
+         resolved_at = ?,
+         assigned_operator_id = COALESCE(assigned_operator_id, ?),
+         assigned_operator_name = COALESCE(assigned_operator_name, ?),
+         assigned_at = COALESCE(assigned_at, ?)
+     WHERE id = ?`
+  ).run(
+    status,
+    resolvedAt,
+    assignNow ? operator.id : null,
+    assignNow ? operator.name : null,
+    assignNow ? new Date().toISOString() : null,
+    id,
+  )
 }
 
 export async function getMyIncidents(
@@ -1350,4 +1770,136 @@ export async function getMyIncidents(
     resolvedAt: r.resolvedAt ? toDisplayDate(r.resolvedAt) : null,
     reporterName: r.reporterName,
   }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE EAH — Eau, Assainissement, Hygiène
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type {
+  EahFacility, EahFacilityType, EahFacilityStatus,
+  EahZoneStat, EahDashboardData
+} from "@/lib/types"
+
+function rowToFacility(r: Record<string, unknown>): EahFacility {
+  return {
+    id: r.id as number,
+    name: r.name as string,
+    type: r.type as EahFacilityType,
+    quartier: r.quartier as string,
+    address: r.address as string,
+    status: r.status as EahFacilityStatus,
+    gender_accessible: (r.gender_accessible as number) === 1,
+    disabled_accessible: (r.disabled_accessible as number) === 1,
+    school_nearby: (r.school_nearby as number) === 1,
+    last_inspection: r.last_inspection as string | null,
+    notes: r.notes as string | null,
+    created_at: r.created_at as string,
+    updated_at: r.updated_at as string,
+    community_signal_count: Number(r.community_signal_count ?? 0),
+    community_unique_reporters: Number(r.community_unique_reporters ?? 0),
+    community_confirmation: (r.community_confirmation as EahFacility["community_confirmation"]) ?? "none",
+    last_community_report_at: r.last_community_report_at as string | null,
+  }
+}
+
+export async function getEahFacilities(params?: {
+  quartier?: string
+  status?: string
+  type?: string
+}): Promise<EahFacility[]> {
+  const db = await getDb()
+  const where: string[] = []
+  const vals: Array<string | number> = []
+
+  if (params?.quartier) { where.push("quartier = ?"); vals.push(params.quartier) }
+  if (params?.status)   { where.push("status = ?");   vals.push(params.status) }
+  if (params?.type)     { where.push("type = ?");     vals.push(params.type) }
+
+  const scopedWhere = where.length
+    ? " WHERE " + where
+        .map((clause) =>
+          clause.replace(/\bquartier\b/g, "ef.quartier").replace(/\bstatus\b/g, "ef.status").replace(/\btype\b/g, "ef.type"),
+        )
+        .join(" AND ")
+    : ""
+
+  const sql = `
+    SELECT
+      ef.*,
+      COALESCE(cs.community_signal_count, 0) as community_signal_count,
+      COALESCE(cs.community_unique_reporters, 0) as community_unique_reporters,
+      COALESCE(cs.community_confirmation, 'none') as community_confirmation,
+      cs.last_community_report_at as last_community_report_at
+    FROM eah_facilities ef
+    LEFT JOIN (
+      SELECT
+        eah_facility_id,
+        COUNT(*) as community_signal_count,
+        COUNT(DISTINCT COALESCE(NULLIF(reporter_email, ''), NULLIF(reporter_name, ''), CAST(reporter_user_id AS TEXT), 'anonyme')) as community_unique_reporters,
+        MAX(created_at) as last_community_report_at,
+        CASE
+          WHEN COUNT(DISTINCT COALESCE(NULLIF(reporter_email, ''), NULLIF(reporter_name, ''), CAST(reporter_user_id AS TEXT), 'anonyme')) >= 3 THEN 'confirmed'
+          WHEN COUNT(DISTINCT COALESCE(NULLIF(reporter_email, ''), NULLIF(reporter_name, ''), CAST(reporter_user_id AS TEXT), 'anonyme')) = 2 THEN 'probable'
+          WHEN COUNT(*) >= 1 THEN 'to_verify'
+          ELSE 'none'
+        END as community_confirmation
+      FROM incidents
+      WHERE eah_facility_id IS NOT NULL
+      GROUP BY eah_facility_id
+    ) cs ON cs.eah_facility_id = ef.id
+    ${scopedWhere}
+    ORDER BY ef.quartier, ef.name
+  `
+  return (db.prepare(sql).all(...vals) as Record<string, unknown>[]).map(rowToFacility)
+}
+
+export async function getEahDashboardData(): Promise<EahDashboardData> {
+  const db = await getDb()
+
+  const all = (db.prepare("SELECT * FROM eah_facilities ORDER BY updated_at DESC").all() as Record<string, unknown>[]).map(rowToFacility)
+
+  const stats = {
+    total_facilities: all.length,
+    operational: all.filter(f => f.status === "operationnel").length,
+    degraded: all.filter(f => f.status === "degradé").length,
+    out_of_service: all.filter(f => f.status === "hors_service").length,
+    gender_accessible: all.filter(f => f.gender_accessible).length,
+    schools_covered: all.filter(f => f.school_nearby).length,
+  }
+
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  const zone_stats: EahZoneStat[] = QUARTIERS.map(q => {
+    const qf = all.filter(f => f.quartier === q)
+    const total = qf.length
+    const operationnel = qf.filter(f => f.status === "operationnel").length
+    const hors_service = qf.filter(f => f.status === "hors_service").length
+    const score = total === 0 ? 0 : Math.round((operationnel / total) * 100)
+    return {
+      quartier: q, total, operationnel, hors_service, score,
+      has_gender_facility: qf.some(f => f.gender_accessible),
+    }
+  })
+
+  const recent_reports = all
+    .filter(f => f.status !== "operationnel")
+    .slice(0, 8)
+
+  return { stats, zone_stats, recent_reports }
+}
+
+export async function updateEahFacilityStatus(
+  id: number,
+  status: EahFacilityStatus,
+  notes?: string
+): Promise<void> {
+  const db = await getDb()
+  const now = new Date().toISOString()
+  if (notes !== undefined) {
+    db.prepare("UPDATE eah_facilities SET status = ?, notes = ?, last_inspection = ?, updated_at = ? WHERE id = ?")
+      .run(status, notes, now, now, id)
+  } else {
+    db.prepare("UPDATE eah_facilities SET status = ?, last_inspection = ?, updated_at = ? WHERE id = ?")
+      .run(status, now, now, id)
+  }
 }

@@ -9,7 +9,7 @@
  *   const anomalies = await aiClient.getAnomalies()
  */
 
-const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://localhost:8000"
+const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8001"
 const AI_TOKEN    = process.env.AI_SERVICE_TOKEN ?? "aquapulse-ai-dev-token"
 
 const AI_ENABLED = process.env.AI_ENABLED !== "false"   // true par défaut

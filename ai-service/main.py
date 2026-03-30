@@ -42,7 +42,7 @@ app.add_middleware(
 
 # Initialisation globale au démarrage
 AI_SERVICE_TOKEN = os.getenv("AI_SERVICE_TOKEN", "aquapulse-ai-dev-token")
-DB_PATH = os.getenv("AQUAPULSE_DB_PATH", "../aq3/data/aquapulse.db")
+DB_PATH = os.getenv("AQUAPULSE_DB_PATH", "../data/aquapulse.db")
 
 engine = AIEngine()
 provider = DataProvider(DB_PATH)

@@ -65,8 +65,9 @@ class AIEngine:
     # ─────────────────────────────────────────────────────────────────────────
 
     def train(self, data: dict[str, Any]):
-        """Entraîne tous les modèles sur les données fournies."""
+        "
         readings = data.get("sensor_readings", [])
+        asset_snapshots = data.get("asset_snapshots", [])
         if len(readings) < 20:
             logger.warning("Pas assez de données, modèles en mode règles uniquement")
             self._ready = True
@@ -84,8 +85,8 @@ class AIEngine:
         logger.info(f"Anomaly model: seuil={self._anomaly_threshold:.3f}, "
                     f"features={X_anomaly.shape}")
 
-        # ── Modèle 2 : Random Forest maintenance ──────────────────────────────
-        X_maint, y_maint = self._build_maintenance_features(readings)
+        # Modèle 2 : Random Forest maintenance
+        X_maint, y_maint = self._build_maintenance_features(asset_snapshots, readings)
         if len(np.unique(y_maint)) >= 2:
             self.maintenance_model.fit(X_maint, y_maint)
             logger.info(f"Maintenance model: {np.sum(y_maint)} incidents / {len(y_maint)}")
@@ -100,11 +101,16 @@ class AIEngine:
             "debit_std":     float(np.std([r["debit"] for r in readings])),
             "pression_mean": float(np.mean([r["pression"] for r in readings])),
             "pression_std":  float(np.std([r["pression"] for r in readings])),
+            "acoustic_mean": float(np.mean([r.get("acoustic", 0.08) for r in readings])),
+            "acoustic_std":  float(np.std([r.get("acoustic", 0.08) for r in readings])),
+            "n_asset_snapshots": len(asset_snapshots),
             "trained_at":    datetime.now().isoformat(),
         }
 
         self._ready = True
-        self.model_version = f"1.0.0-{'synthetic' if len(readings) < 5000 else 'real'}"
+        self.model_version = (
+            f"1.1.0-enriched-{'synthetic' if len(asset_snapshots) < 200 else 'hybrid'}"
+        )
         logger.info(f"✅ Entraînement terminé : {self.model_version}")
 
     def _build_anomaly_features(self, readings: list[dict]) -> np.ndarray:
@@ -124,9 +130,27 @@ class AIEngine:
             ])
         return np.array(rows, dtype=float)
 
-    def _build_maintenance_features(self, readings: list[dict]) -> tuple[np.ndarray, np.ndarray]:
-        """Features pour Random Forest : séquences temporelles agrégées."""
-        window = 8  # 2h de lectures à 15min
+    def _build_maintenance_features(self, asset_snapshots: list[dict], readings: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+        """Features maintenance : snapshots d'actifs si disponibles, sinon fallback séries réseau."""
+        if asset_snapshots:
+            rows = sorted(asset_snapshots, key=lambda s: (s.get("sensor_id", ""), s.get("recorded_at", "")))
+            X, y = [], []
+            for snap in rows:
+                features = [
+                    float(snap.get("temperature_c", 45.0)),
+                    float(snap.get("vibration_score", 0.2)),
+                    float(snap.get("runtime_hours", 2400.0)),
+                    float(snap.get("load_pct", 60.0)),
+                    float(snap.get("acoustic_score", 0.12)),
+                    float(snap.get("pressure_delta", -0.05)),
+                    float(snap.get("flow_delta", 15.0)),
+                ]
+                X.append(features)
+                y.append(int(snap.get("failure_within_30d", 0)))
+
+            return np.array(X, dtype=float), np.array(y, dtype=int)
+
+        window = 8  # fallback historique global
         X, y = [], []
 
         for i in range(window, len(readings)):
@@ -175,15 +199,29 @@ class AIEngine:
         turb     = quality.get("turbidity",  {}).get("value", 0.8)
         chlorine = quality.get("chlorine",   {}).get("value", 0.5)
         temp     = quality.get("temperature",{}).get("value", 28.0)
+        acoustic = float(np.mean([
+            s.get("acoustic_score", 0.08) for s in sensors if s.get("acoustic_score") is not None
+        ])) if sensors else 0.08
 
         stats = self._training_stats
         debit_mean    = stats.get("debit_mean",    600)
         debit_std     = stats.get("debit_std",     80)
         pression_mean = stats.get("pression_mean", 3.0)
         pression_std  = stats.get("pression_std",  0.3)
+        acoustic_mean = stats.get("acoustic_mean", 0.08)
 
-        alerts = []
         now    = datetime.now().isoformat()
+        alerts = self._detect_sensor_level_anomalies(
+            sensors=sensors,
+            debit=debit,
+            pression=pression,
+            ph=ph,
+            turb=turb,
+            chlorine=chlorine,
+            temp=temp,
+            acoustic=acoustic,
+            generated_at=now,
+        )
 
         # ── Règle 1 : Chute pression + hausse débit → Fuite probable ─────────
         if pression < pression_mean - 2 * pression_std and debit > debit_mean + 1.5 * debit_std:
@@ -201,6 +239,23 @@ class AIEngine:
                     f"Chute de pression de {drop_pct:.0f}% et hausse du débit de {excess:.0f}%. "
                     f"Signature caractéristique d'une rupture de conduite. "
                     f"Pression actuelle : {pression:.2f} bar (normale : {pression_mean:.2f} bar)."
+                ),
+                generated_at=now,
+            ))
+
+        # ── Règle 1bis : acoustique anormalement haut → suspicion fuite locale ─
+        if acoustic > max(0.25, acoustic_mean * 1.8) and pression < pression_mean:
+            proba = min(0.93, 0.58 + acoustic * 0.4 + max(0, (pression_mean - pression)) * 0.08)
+            alerts.append(self._make_alert(
+                id_suffix="ACOUSTIC",
+                type_="Fuite",
+                classification="Fuite",
+                severity=self._severity_from_proba(proba),
+                probability=round(proba * 100),
+                location=self._estimate_leak_location(pression, debit),
+                description=(
+                    f"Niveau acoustique moyen à {acoustic:.2f}, supérieur au bruit de fond observé. "
+                    f"Chute de pression concomitante détectée sur les capteurs de zone."
                 ),
                 generated_at=now,
             ))
@@ -281,7 +336,7 @@ class AIEngine:
 
         # ── Modèle ML : validation par Isolation Forest ─────────────────────
         if self._ready and len(readings_vec := [
-            debit, pression, 0.05, 0, 0, ph, turb, chlorine, temp
+            debit, pression, acoustic, 0, 0, ph, turb, chlorine, temp
         ]) == 9:
             try:
                 X = np.array([readings_vec])
@@ -306,16 +361,25 @@ class AIEngine:
             except Exception as e:
                 logger.debug(f"ML score ignoré : {e}")
 
+        deduped_alerts: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for alert in sorted(alerts, key=lambda item: (-int(item["probability"]), item["id"])):
+            key = (str(alert["classification"]), str(alert["location"]), str(alert["type"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped_alerts.append(alert)
+
         summary = {
-            "total":    len(alerts),
-            "critique": sum(1 for a in alerts if a["severity"] == "critique"),
-            "alerte":   sum(1 for a in alerts if a["severity"] == "alerte"),
-            "moyen":    sum(1 for a in alerts if a["severity"] == "moyen"),
-            "faible":   sum(1 for a in alerts if a["severity"] == "faible"),
+            "total":    len(deduped_alerts),
+            "critique": sum(1 for a in deduped_alerts if a["severity"] == "critique"),
+            "alerte":   sum(1 for a in deduped_alerts if a["severity"] == "alerte"),
+            "moyen":    sum(1 for a in deduped_alerts if a["severity"] == "moyen"),
+            "faible":   sum(1 for a in deduped_alerts if a["severity"] == "faible"),
         }
 
         return {
-            "alerts":       alerts,
+            "alerts":       deduped_alerts[:6],
             "summary":      summary,
             "generated_at": now,
         }
@@ -384,13 +448,17 @@ class AIEngine:
             battery     = asset.get("battery", 80)
             signal      = asset.get("signal", 85)
             location    = asset.get("location", "")
+            failure_within_30d = float(asset.get("failure_within_30d", 0) or 0)
 
-            # Features simulées — en réel : heures de fonctionnement, temp, vibrations
-            age_simulated     = random.randint(1, 15)    # années
-            load_pct          = random.uniform(40, 95)   # charge moyenne
-            temp_celsius      = random.uniform(35, 65)   # température moteur
-            vibration_score   = random.uniform(0.1, 0.9)
-            maintenance_days  = random.randint(30, 400)  # jours depuis dernière maintenance
+            temp_celsius      = float(asset.get("temperature_c", random.uniform(35, 65)))
+            vibration_score   = float(asset.get("vibration_score", random.uniform(0.1, 0.9)))
+            runtime_hours     = float(asset.get("runtime_hours", random.uniform(1800, 4200)))
+            load_pct          = float(asset.get("load_pct", random.uniform(40, 95)))
+            acoustic_score    = float(asset.get("acoustic_score", random.uniform(0.05, 0.5)))
+            pressure_delta    = float(asset.get("pressure_delta", random.uniform(-0.3, 0.2)))
+            flow_delta        = float(asset.get("flow_delta", random.uniform(5, 120)))
+            maintenance_days  = max(15, min(420, int(runtime_hours / 14)))
+            age_simulated     = max(1, min(18, int(runtime_hours / 900)))
 
             # Score de risque composite
             age_risk    = min(1.0, age_simulated / 20)
@@ -398,33 +466,57 @@ class AIEngine:
             vib_risk    = vibration_score ** 2
             maint_risk  = min(1.0, maintenance_days / 365)
             batt_risk   = max(0, (30 - battery) / 30) if battery < 30 else 0
+            acoustic_risk = min(1.0, acoustic_score / 0.9)
+            hydraulic_risk = min(1.0, (abs(pressure_delta) * 1.8 + abs(flow_delta) / 180))
+            signal_risk = max(0, (55 - signal) / 55) if signal < 55 else 0
+            status_risk = 0.35 if status == "alerte" else 0.65 if status == "inactif" else 0
+            imminent_failure_risk = min(1.0, failure_within_30d)
 
             risk_score = (
-                age_risk   * 0.25 +
-                temp_risk  * 0.30 +
-                vib_risk   * 0.20 +
-                maint_risk * 0.15 +
-                batt_risk  * 0.10
+                age_risk             * 0.12 +
+                temp_risk            * 0.18 +
+                vib_risk             * 0.16 +
+                maint_risk           * 0.10 +
+                batt_risk            * 0.06 +
+                acoustic_risk        * 0.10 +
+                hydraulic_risk       * 0.12 +
+                signal_risk          * 0.04 +
+                status_risk          * 0.05 +
+                imminent_failure_risk * 0.17
             )
 
             # Validation RF si entraîné
             if hasattr(self.maintenance_model, "predict_proba"):
                 try:
                     X = np.array([[
-                        600, 80, 400, 200, 3.0, 0.3, 2.5, 0.5, temp_celsius, vibration_score,
-                        0.1, -0.05
+                        temp_celsius,
+                        vibration_score,
+                        runtime_hours,
+                        load_pct,
+                        acoustic_score,
+                        pressure_delta,
+                        flow_delta,
                     ]])
                     proba = self.maintenance_model.predict_proba(X)[0]
                     if len(proba) >= 2:
-                        risk_score = 0.5 * risk_score + 0.5 * proba[1]
+                        risk_score = 0.35 * risk_score + 0.65 * proba[1]
                 except Exception:
                     pass
 
+            if failure_within_30d >= 1:
+                risk_score = max(risk_score, 0.72)
+            if status == "alerte" and (temp_celsius > 62 or vibration_score > 0.62 or acoustic_score > 0.7):
+                risk_score = max(risk_score, 0.78)
+            if status == "inactif":
+                risk_score = max(risk_score, 0.82)
+
+            risk_score = min(1.0, risk_score)
+
             # Urgence et date recommandée
-            if risk_score > 0.7:
+            if risk_score >= 0.72:
                 urgency = "urgent"
                 days_until = random.randint(1, 7)
-            elif risk_score > 0.45:
+            elif risk_score >= 0.42:
                 urgency = "planifier"
                 days_until = random.randint(8, 30)
             else:
@@ -449,6 +541,11 @@ class AIEngine:
                     "vibration_score":   round(vibration_score, 2),
                     "days_since_maint":  maintenance_days,
                     "battery":           battery,
+                    "acoustic_score":    round(acoustic_score, 2),
+                    "pressure_delta":    round(pressure_delta, 3),
+                    "flow_delta":        round(flow_delta, 1),
+                    "signal":            signal,
+                    "failure_within_30d": int(failure_within_30d),
                 },
             })
 
@@ -566,6 +663,216 @@ class AIEngine:
             return round(float(max(0, -score)), 3)
         except Exception:
             return 0.0
+
+    def _detect_sensor_level_anomalies(
+        self,
+        sensors: list[dict[str, Any]],
+        debit: float,
+        pression: float,
+        ph: float,
+        turb: float,
+        chlorine: float,
+        temp: float,
+        acoustic: float,
+        generated_at: str,
+    ) -> list[dict[str, Any]]:
+        """Détection plus fine par capteur pour éviter un seul incident global."""
+        alerts: list[dict[str, Any]] = []
+        if not sensors:
+            return alerts
+
+        stats = self._training_stats
+        pressure_mean = stats.get("pression_mean", 3.0)
+
+        for sensor in sensors:
+            sensor_vector = self._build_sensor_realtime_vector(
+                sensor=sensor,
+                debit=debit,
+                pression=pression,
+                ph=ph,
+                turb=turb,
+                chlorine=chlorine,
+                temp=temp,
+            )
+            score = None
+            if self._ready:
+                try:
+                    X = np.array([sensor_vector], dtype=float)
+                    score = self.anomaly_model.named_steps["iforest"].decision_function(
+                        self.anomaly_model.named_steps["scaler"].transform(X)
+                    )[0]
+                except Exception:
+                    score = None
+
+            classification = self._classify_sensor_anomaly(sensor, pression, pressure_mean, ph, turb, chlorine)
+            if not classification:
+                continue
+
+            base_probability = self._sensor_probability_from_score(sensor, score)
+            if classification == "Fuite":
+                base_probability = max(base_probability, min(96, round(55 + acoustic * 65)))
+            elif classification == "Panne pompe" and sensor.get("status") == "inactif":
+                base_probability = max(base_probability, 82)
+
+            if base_probability < 62:
+                continue
+
+            sensor_id = str(sensor.get("id", "CAPTEUR"))
+            sensor_type = str(sensor.get("type", "Capteur"))
+            location = str(sensor.get("location", "Réseau"))
+
+            alerts.append(self._make_alert(
+                id_suffix=f"{classification.upper().replace(' ', '-')}-{sensor_id}",
+                type_=classification,
+                classification=classification,
+                severity=self._severity_from_proba(base_probability / 100),
+                probability=base_probability,
+                location=location,
+                description=self._sensor_alert_description(
+                    sensor=sensor,
+                    classification=classification,
+                    model_score=score,
+                    network_pressure=pression,
+                    network_flow=debit,
+                    acoustic=acoustic,
+                ),
+                generated_at=generated_at,
+            ))
+
+        return alerts
+
+    @staticmethod
+    def _build_sensor_realtime_vector(
+        sensor: dict[str, Any],
+        debit: float,
+        pression: float,
+        ph: float,
+        turb: float,
+        chlorine: float,
+        temp: float,
+    ) -> list[float]:
+        flow_delta = float(sensor.get("flow_delta", 0.0) or 0.0)
+        pressure_delta = float(sensor.get("pressure_delta", 0.0) or 0.0)
+        acoustic_score = float(sensor.get("acoustic_score", 0.08) or 0.08)
+        return [
+            float(debit + flow_delta),
+            float(max(0.2, pression + pressure_delta)),
+            acoustic_score,
+            flow_delta,
+            pressure_delta,
+            float(ph),
+            float(turb),
+            float(chlorine),
+            float(temp),
+        ]
+
+    @staticmethod
+    def _sensor_probability_from_score(sensor: dict[str, Any], score: float | None) -> int:
+        vibration = float(sensor.get("vibration_score", 0.0) or 0.0)
+        acoustic_score = float(sensor.get("acoustic_score", 0.0) or 0.0)
+        signal = int(sensor.get("signal", 80) or 80)
+        failure_within_30d = int(sensor.get("failure_within_30d", 0) or 0)
+        status = str(sensor.get("status", "actif"))
+
+        probability = 54
+        if score is not None:
+            probability += max(0, int(round((-score) * 260)))
+        probability += int(vibration * 18)
+        probability += int(acoustic_score * 22)
+        probability += failure_within_30d * 14
+        if status == "alerte":
+            probability += 8
+        if status == "inactif":
+            probability += 14
+        if signal < 45:
+            probability += 4
+        return max(40, min(98, probability))
+
+    @staticmethod
+    def _classify_sensor_anomaly(
+        sensor: dict[str, Any],
+        pression: float,
+        pressure_mean: float,
+        ph: float,
+        turb: float,
+        chlorine: float,
+    ) -> str | None:
+        sensor_type = str(sensor.get("type", "")).lower()
+        acoustic_score = float(sensor.get("acoustic_score", 0.0) or 0.0)
+        vibration = float(sensor.get("vibration_score", 0.0) or 0.0)
+        pressure_delta = float(sensor.get("pressure_delta", 0.0) or 0.0)
+        flow_delta = float(sensor.get("flow_delta", 0.0) or 0.0)
+        failure_within_30d = int(sensor.get("failure_within_30d", 0) or 0)
+        status = str(sensor.get("status", "actif"))
+
+        if ("qualite" in sensor_type or "quality" in sensor_type) and (ph < 6.4 or ph > 8.6 or (turb > 2.5 and chlorine < 0.2)):
+            return "Contamination"
+        if "acoustique" in sensor_type and acoustic_score >= 0.55 and (pression < pressure_mean or pressure_delta < -0.18):
+            return "Fuite"
+        if "pression" in sensor_type and pressure_delta <= -0.25 and (flow_delta >= 70 or acoustic_score >= 0.35):
+            return "Fuite"
+        if "debit" in sensor_type and flow_delta >= 120 and pression >= pressure_mean * 0.9:
+            return "Fraude"
+        if ("pression" in sensor_type) and (status in {"alerte", "inactif"} or failure_within_30d or vibration >= 0.62):
+            return "Pression"
+        if ("debit" in sensor_type) and (status in {"alerte", "inactif"} or failure_within_30d or vibration >= 0.62):
+            return "Panne pompe"
+        if status in {"alerte", "inactif"} or failure_within_30d or vibration >= 0.62:
+            return "Anomalie capteur"
+        return None
+
+    @staticmethod
+    def _sensor_alert_description(
+        sensor: dict[str, Any],
+        classification: str,
+        model_score: float | None,
+        network_pressure: float,
+        network_flow: float,
+        acoustic: float,
+    ) -> str:
+        sensor_id = str(sensor.get("id", "capteur"))
+        sensor_type = str(sensor.get("type", "Capteur"))
+        vibration = float(sensor.get("vibration_score", 0.0) or 0.0)
+        acoustic_score = float(sensor.get("acoustic_score", 0.0) or 0.0)
+        pressure_delta = float(sensor.get("pressure_delta", 0.0) or 0.0)
+        flow_delta = float(sensor.get("flow_delta", 0.0) or 0.0)
+        signal = int(sensor.get("signal", 80) or 80)
+        score_text = f" Score modèle={model_score:.3f}." if model_score is not None else ""
+
+        if classification == "Fuite":
+            return (
+                f"{sensor_type} {sensor_id} présente une dérive pression/débit "
+                f"({pressure_delta:.2f} bar, {flow_delta:.1f} m3/h) avec signature acoustique "
+                f"locale à {acoustic_score:.2f} et moyenne réseau à {acoustic:.2f}.{score_text}"
+            )
+        if classification == "Fraude":
+            return (
+                f"{sensor_type} {sensor_id} signale une surconsommation localisée "
+                f"de {flow_delta:.1f} m3/h alors que la pression réseau reste à {network_pressure:.2f} bar. "
+                f"Schéma compatible avec un prélèvement non autorisé.{score_text}"
+            )
+        if classification == "Contamination":
+            return (
+                f"{sensor_type} {sensor_id} détecte un écart qualité nécessitant vérification terrain. "
+                f"Le moteur recoupe qualité réseau et capteur local avant génération.{score_text}"
+            )
+        if classification == "Pression":
+            return (
+                f"{sensor_type} {sensor_id} présente une dérive de pression de {pressure_delta:.2f} bar "
+                f"avec un état {sensor.get('status', 'actif')} et une vibration à {vibration:.2f}. "
+                f"Le moteur suspecte une chute de performance hydraulique locale.{score_text}"
+            )
+        if classification == "Anomalie capteur":
+            return (
+                f"{sensor_type} {sensor_id} présente un comportement matériel anormal "
+                f"(état {sensor.get('status', 'actif')}, vibration {vibration:.2f}, signal {signal}%). "
+                f"Une vérification terrain du capteur et de son alimentation est recommandée.{score_text}"
+            )
+        return (
+            f"{sensor_type} {sensor_id} cumule un état {sensor.get('status', 'actif')}, "
+            f"une vibration à {vibration:.2f}, un signal à {signal}% et une dérive hydraulique "
+            f"de {flow_delta:.1f} m3/h. Risque de défaillance à traiter rapidement.{score_text}"
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # HELPERS

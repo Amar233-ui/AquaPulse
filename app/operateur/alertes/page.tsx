@@ -15,18 +15,29 @@ import {
 import { useMemo, useState, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useApiQuery } from "@/hooks/use-api-query"
+import { useMarkNotificationsViewed } from "@/hooks/use-mark-notifications-viewed"
 import type { OperatorAlert, OperatorIncident, IncidentSummary } from "@/lib/types"
+import Link from "next/link"
 
 interface AlertsResponse {
   summary: { critique: number; alerte: number; moyen: number; faible: number }
   items: OperatorAlert[]
+  ai_available?: boolean
+  ai_generated?: number
+  model_version?: string
 }
 interface IncidentsResponse {
   items: OperatorIncident[]
   summary: IncidentSummary
 }
 
-const DEFAULT_ALERTS: AlertsResponse = { summary: { critique:0, alerte:0, moyen:0, faible:0 }, items:[] }
+const DEFAULT_ALERTS: AlertsResponse = {
+  summary: { critique:0, alerte:0, moyen:0, faible:0 },
+  items:[],
+  ai_available: false,
+  ai_generated: 0,
+  model_version: "",
+}
 const DEFAULT_INCIDENTS: IncidentsResponse = { items:[], summary:{ nouveau:0, enCours:0, resolu:0, total:0 } }
 
 const ALERT_DETAILS: Record<string,{ icon:string; sensor:string; zone:string; description:string; actions:string[]; impact:string; procedure:string }> = {
@@ -37,6 +48,7 @@ const ALERT_DETAILS: Record<string,{ icon:string; sensor:string; zone:string; de
   "Pression":      { icon:"📊", sensor:"Pression", zone:"Station HLM", description:"Chute de pression progressive depuis 3h. Vanne V-45 partiellement fermée (ouverture 35%). Pression descend sous 2.0 bar.", actions:["Vérifier position vanne V-45","Contrôler alimentation vanne","Augmenter pression en amont","Informer usagers si < 1.5 bar"], impact:"Faible débit au robinet pour 18 000 habitants du secteur HLM-Est", procedure:"Protocole Pression PP-04 : diagnostic vannes + compensation amont" },
   "Debit anormal": { icon:"📈", sensor:"Débit", zone:"Parcelles Assainies", description:"Débit 15% supérieur à la normale sur canalisation C12. Corrélation probable avec une fuite aval non encore détectée acoustiquement.", actions:["Activer surveillance renforcée","Lancer inspection acoustique","Croiser données capteurs voisins","Préparer équipe intervention"], impact:"Surconsommation estimée 40 m³/h", procedure:"Protocole Surveillance PS-01 : monitoring renforcé 24h + rapport" },
   "Temperature":   { icon:"🌡️", sensor:"Température", zone:"Réservoir Parcelles", description:"Température eau à 29.4°C (seuil 28°C). Accélère la prolifération bactérienne en période de chaleur.", actions:["Augmenter dosage chlore +0.1 mg/L","Effectuer prélèvement analyse","Vérifier isolation réservoir","Réduire temps de séjour eau"], impact:"Risque qualité microbiologique si T° dépasse 31°C sans action", procedure:"Protocole Qualité PQ-05 : ajustement traitement + surveillance horaire" },
+  "Anomalie capteur": { icon:"📡", sensor:"Instrumentation", zone:"Réseau local", description:"Le capteur remonte un comportement matériel ou de communication incohérent. Une inspection de l'alimentation, du signal et du boîtier est nécessaire.", actions:["Vérifier alimentation et batterie","Contrôler liaison radio","Tester la sonde sur site","Planifier remplacement si dérive confirmée"], impact:"Perte de fiabilité de supervision sur le secteur concerné", procedure:"Protocole Instrumentation PI-03 : test terrain + recalibrage ou échange standard" },
 }
 const getDetail=(alert: OperatorAlert)=>ALERT_DETAILS[alert.type]??ALERT_DETAILS["Debit anormal"]
 
@@ -55,7 +67,23 @@ const TYPE_LABELS: Record<string,string> = {
   coupure:"Coupure", odeur:"Odeur", autre:"Autre",
 }
 
+function getSourceMeta(sourceType?: OperatorAlert["source_type"]) {
+  if (sourceType === "ai_generated") {
+    return {
+      label: "IA live",
+      className: "border-blue-500/30 bg-blue-500/10 text-blue-400",
+    }
+  }
+
+  return {
+    label: "Historique DB",
+    className: "border-slate-500/30 bg-slate-500/10 text-slate-400",
+  }
+}
+
 export default function AlertesPage() {
+  useMarkNotificationsViewed(["alertes", "signalements"])
+
   const [activeTab, setActiveTab] = useState<"alertes"|"signalements">("alertes")
 
   // ── Alertes ──
@@ -63,6 +91,8 @@ export default function AlertesPage() {
   const [severity, setSeverity]           = useState("all")
   const [classification, setClassification] = useState("all")
   const [selectedAlert, setSelectedAlert] = useState<OperatorAlert|null>(null)
+  const [creatingOrder, setCreatingOrder] = useState(false)
+  const [orderMessage, setOrderMessage] = useState<string | null>(null)
 
   const alertQuery = useMemo(()=>{
     const p=new URLSearchParams()
@@ -113,6 +143,51 @@ export default function AlertesPage() {
     }
   },[])
 
+  const createWorkOrder = useCallback(async (alert: OperatorAlert) => {
+    setCreatingOrder(true)
+    setOrderMessage(null)
+
+    try {
+      const probability = Number.parseInt(alert.probability.replace("%", ""), 10)
+      const res = await fetch("/api/operateur/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          alertId: alert.id,
+          alertType: alert.type,
+          classification: alert.classification,
+          location: alert.location,
+          severity: alert.severity,
+          probability: Number.isNaN(probability) ? 60 : probability,
+          description: alert.description ?? "",
+          sourceType: alert.source_type ?? "db",
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        alreadyExists?: boolean
+        taskId?: string
+        error?: string
+      }
+
+      if (!res.ok) {
+        throw new Error(json.error ?? "Création du bon impossible")
+      }
+
+      setOrderMessage(
+        json.alreadyExists
+          ? `Un bon d’intervention existe déjà (${json.taskId}).`
+          : `Bon d’intervention créé (${json.taskId}).`
+      )
+    } catch (error) {
+      setOrderMessage(error instanceof Error ? error.message : "Erreur lors de la création du bon")
+    } finally {
+      setCreatingOrder(false)
+    }
+  }, [])
+
   const detail = selectedAlert ? getDetail(selectedAlert) : null
 
   return (
@@ -120,9 +195,9 @@ export default function AlertesPage() {
       <div className="flex flex-col gap-4 min-h-0">
 
         {/* Onglets */}
-        <div className="flex gap-1 rounded-xl border border-border/60 bg-card/50 p-1 w-fit">
+        <div className="flex w-full gap-1 rounded-xl border border-border/60 bg-card/50 p-1 sm:w-fit">
           <button onClick={()=>setActiveTab("alertes")}
-            className={cn("flex items-center gap-2 rounded-lg px-3 sm:px-4 py-2 text-sm font-medium transition-all",
+            className={cn("flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:justify-start sm:px-4",
               activeTab==="alertes"?"bg-blue-500/15 text-blue-400 border border-blue-500/30":"text-foreground/60 hover:text-foreground hover:bg-secondary/50")}>
             <AlertTriangle className="h-4 w-4"/>
             <span className="hidden sm:inline">Alertes système</span>
@@ -133,7 +208,7 @@ export default function AlertesPage() {
             </span>
           </button>
           <button onClick={()=>setActiveTab("signalements")}
-            className={cn("flex items-center gap-2 rounded-lg px-3 sm:px-4 py-2 text-sm font-medium transition-all",
+            className={cn("flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:justify-start sm:px-4",
               activeTab==="signalements"?"bg-amber-500/15 text-amber-400 border border-amber-500/30":"text-foreground/60 hover:text-foreground hover:bg-secondary/50")}>
             <MessageSquareWarning className="h-4 w-4"/>
             <span className="hidden sm:inline">Signalements citoyens</span>
@@ -167,15 +242,49 @@ export default function AlertesPage() {
                 ))}
               </div>
 
+              <Card className={cn(
+                "border shadow-sm",
+                alertData.ai_available
+                  ? "border-blue-500/25 bg-blue-500/5"
+                  : "border-slate-500/25 bg-slate-500/5"
+              )}>
+                <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">État IA</p>
+                    <p className="text-sm text-foreground">
+                      {alertData.ai_available
+                        ? `Service IA actif${alertData.model_version ? ` · modèle ${alertData.model_version}` : ""}`
+                        : "Service IA indisponible, affichage des alertes historiques uniquement"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {alertData.ai_available
+                        ? `${alertData.ai_generated ?? 0} alerte(s) générée(s) en direct par l'IA sur cette vue.`
+                        : "Les alertes visibles ici proviennent de la base locale ou de l'historique déjà enregistré."}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "self-start text-[10px] sm:self-center",
+                      alertData.ai_available
+                        ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
+                        : "border-slate-500/30 bg-slate-500/10 text-slate-400"
+                    )}
+                  >
+                    {alertData.ai_available ? "IA active" : "Sans IA live"}
+                  </Badge>
+                </CardContent>
+              </Card>
+
               {/* Filtres */}
               <Card className="border border-border/60">
-                <CardContent className="flex flex-wrap items-center gap-2 p-3">
-                  <div className="relative flex-1 min-w-40">
+                <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="relative w-full flex-1 sm:min-w-40">
                     <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/>
                     <Input placeholder="Rechercher…" className="pl-8 h-9" value={search} onChange={e=>setSearch(e.target.value)}/>
                   </div>
                   <Select value={severity} onValueChange={setSeverity}>
-                    <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Sévérité"/></SelectTrigger>
+                    <SelectTrigger className="h-9 w-full sm:w-36"><SelectValue placeholder="Sévérité"/></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Toutes</SelectItem>
                       <SelectItem value="critique">Critique</SelectItem>
@@ -185,22 +294,24 @@ export default function AlertesPage() {
                     </SelectContent>
                   </Select>
                   <Select value={classification} onValueChange={setClassification}>
-                    <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Type"/></SelectTrigger>
+                    <SelectTrigger className="h-9 w-full sm:w-40"><SelectValue placeholder="Type"/></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Tous types</SelectItem>
                       <SelectItem value="Fuite">Fuite</SelectItem>
                       <SelectItem value="Panne pompe">Panne Pompe</SelectItem>
                       <SelectItem value="Fraude">Fraude</SelectItem>
                       <SelectItem value="Contamination">Contamination</SelectItem>
+                      <SelectItem value="Pression">Pression</SelectItem>
+                      <SelectItem value="Anomalie capteur">Anomalie capteur</SelectItem>
                     </SelectContent>
                   </Select>
                   {(severity!=="all"||classification!=="all"||search)&&(
-                    <Button variant="outline" size="sm" className="h-9 gap-1.5 text-muted-foreground"
+                    <Button variant="outline" size="sm" className="h-9 w-full gap-1.5 text-muted-foreground sm:w-auto"
                       onClick={()=>{setSeverity("all");setClassification("all");setSearch("")}}>
                       <X className="h-3.5 w-3.5"/> Effacer
                     </Button>
                   )}
-                  {alertLoading&&<RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-auto"/>}
+                  {alertLoading&&<RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground sm:ml-auto"/>}
                 </CardContent>
               </Card>
 
@@ -216,9 +327,10 @@ export default function AlertesPage() {
                     <div className="py-12 text-center text-sm text-muted-foreground">Aucune alerte pour ce filtre.</div>
                   ):alertData.items.map(alert=>{
                     const d=getDetail(alert), isSel=selectedAlert?.id===alert.id
+                    const sourceMeta = getSourceMeta(alert.source_type)
                     return(
                       <div key={alert.id} onClick={()=>setSelectedAlert(isSel?null:alert)}
-                        className={cn("flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-b border-border/30 hover:bg-muted/30 last:border-0",isSel?"bg-primary/5 border-l-2 border-l-primary":"")}>
+                        className={cn("flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors border-b border-border/30 hover:bg-muted/30 last:border-0",isSel?"bg-primary/5 border-l-2 border-l-primary":"")}>
                         <span className="text-lg shrink-0">{d.icon}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -226,12 +338,21 @@ export default function AlertesPage() {
                             <span className="text-xs font-mono text-muted-foreground hidden sm:inline">{alert.id}</span>
                           </div>
                           <p className="text-xs text-muted-foreground truncate">{alert.location}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground sm:hidden">
+                            <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3"/>{alert.probability}</span>
+                            <span>{alert.date}</span>
+                            <Badge variant="outline" className={cn("text-[10px]", sourceMeta.className)}>{sourceMeta.label}</Badge>
+                            <Badge variant="outline" className={cn("text-[10px]",STATUS_BADGE[alert.status]??"")}>{alert.status}</Badge>
+                          </div>
                         </div>
                         <div className="hidden sm:flex items-center gap-2 shrink-0">
                           <span className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3 w-3"/>{alert.probability}</span>
                           <span className="text-xs text-muted-foreground">{alert.date}</span>
                         </div>
                         <StatusBadge status={alert.severity}/>
+                        <Badge variant="outline" className={cn("text-[10px] hidden sm:inline-flex", sourceMeta.className)}>
+                          {sourceMeta.label}
+                        </Badge>
                         <Badge variant="outline" className={cn("text-[10px] hidden sm:inline-flex",STATUS_BADGE[alert.status]??"")}>{alert.status}</Badge>
                         <Eye className="h-4 w-4 text-muted-foreground shrink-0"/>
                       </div>
@@ -243,8 +364,15 @@ export default function AlertesPage() {
 
             {/* Panneau détail alerte */}
             {selectedAlert&&detail&&(
-              <div className="w-full lg:w-80 shrink-0">
-                <Card className="border border-border/60 shadow-sm">
+              <>
+              <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={()=>setSelectedAlert(null)} />
+              <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-border/60 bg-background lg:static lg:z-auto lg:max-h-none lg:w-80 lg:rounded-none lg:border-0 lg:bg-transparent">
+                {(() => {
+                  const sourceMeta = getSourceMeta(selectedAlert.source_type)
+                  const detailText = selectedAlert.description?.trim() || detail.description
+                  const isAiAlert = selectedAlert.source_type === "ai_generated"
+                  return (
+                <Card className="border-0 shadow-none lg:border lg:border-border/60 lg:shadow-sm">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div>
@@ -254,6 +382,7 @@ export default function AlertesPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <StatusBadge status={selectedAlert.severity}/>
+                          <Badge variant="outline" className={cn("text-[10px]", sourceMeta.className)}>{sourceMeta.label}</Badge>
                           <Badge variant="outline" className={cn("text-[10px]",STATUS_BADGE[selectedAlert.status]??"")}>{selectedAlert.status}</Badge>
                         </div>
                       </div>
@@ -261,16 +390,31 @@ export default function AlertesPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm pt-0">
+                    {orderMessage && (
+                      <div className="rounded-lg border border-blue-500/25 bg-blue-500/5 px-3 py-2 text-xs text-blue-300">
+                        {orderMessage}
+                        <span className="ml-1">
+                          <Link href="/operateur/maintenance" className="underline underline-offset-2">
+                            Ouvrir la maintenance
+                          </Link>
+                        </span>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      {[{l:"Capteur",v:detail.sensor,i:<Radio className="h-3 w-3"/>},{l:"Zone",v:detail.zone,i:<MapPin className="h-3 w-3"/>},{l:"Probabilité IA",v:selectedAlert.probability,i:<TrendingUp className="h-3 w-3"/>},{l:"Détectée",v:selectedAlert.date,i:<Clock className="h-3 w-3"/>}].map(m=>(
+                      {[{l:"Capteur",v:detail.sensor,i:<Radio className="h-3 w-3"/>},{l:"Zone",v:detail.zone,i:<MapPin className="h-3 w-3"/>},{l:isAiAlert ? "Probabilité IA" : "Probabilité estimée",v:selectedAlert.probability,i:<TrendingUp className="h-3 w-3"/>},{l:"Détectée",v:selectedAlert.date,i:<Clock className="h-3 w-3"/>}].map(m=>(
                         <div key={m.l} className="rounded-lg bg-muted/30 p-2.5">
                           <p className="text-muted-foreground mb-0.5">{m.l}</p>
                           <p className="font-semibold text-foreground flex items-center gap-1">{m.i}{m.v}</p>
                         </div>
                       ))}
                     </div>
-                    <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Diagnostic</p>
-                      <p className="text-xs leading-relaxed text-foreground/80 bg-muted/20 rounded-lg p-3 border border-border/40">{detail.description}</p>
+                    <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">{isAiAlert ? "Diagnostic calculé" : "Contexte opératoire"}</p>
+                      <p className="text-xs leading-relaxed text-foreground/80 bg-muted/20 rounded-lg p-3 border border-border/40">{detailText}</p>
+                      {!isAiAlert && (
+                        <p className="mt-2 text-[10px] text-muted-foreground">
+                          Cette fiche provient de l&apos;historique ou d&apos;un scénario type, pas d&apos;une génération IA en direct.
+                        </p>
+                      )}
                     </div>
                     <div className="rounded-lg border p-3" style={{borderColor:"rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.05)"}}>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/80 mb-1.5 flex items-center gap-1"><Activity className="h-3 w-3"/> Impact estimé</p>
@@ -292,8 +436,16 @@ export default function AlertesPage() {
                       </ol>
                     </div>
                     <div className="border-t border-border/40 pt-3 space-y-2">
-                      <Button size="sm" className="w-full h-8 text-xs bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 gap-1.5">
-                        <Zap className="h-3.5 w-3.5"/> Créer bon d'intervention
+                      <Button
+                        size="sm"
+                        className="w-full h-8 text-xs bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 gap-1.5"
+                        onClick={() => createWorkOrder(selectedAlert)}
+                        disabled={creatingOrder}
+                      >
+                        {creatingOrder
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin"/> Création…</>
+                          : <><Zap className="h-3.5 w-3.5"/> Créer bon d'intervention</>
+                        }
                       </Button>
                       <div className="grid grid-cols-2 gap-2">
                         <Button variant="outline" size="sm" className="h-8 text-xs gap-1"><CheckCircle className="h-3.5 w-3.5"/> Acquitter</Button>
@@ -302,7 +454,10 @@ export default function AlertesPage() {
                     </div>
                   </CardContent>
                 </Card>
+                  )
+                })()}
               </div>
+              </>
             )}
           </div>
         )}
@@ -327,13 +482,13 @@ export default function AlertesPage() {
 
             {/* Filtres */}
             <Card className="border border-border/60">
-              <CardContent className="flex flex-wrap items-center gap-2 p-3">
-                <div className="relative flex-1 min-w-40">
+              <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="relative w-full flex-1 sm:min-w-40">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/>
                   <Input placeholder="Rechercher…" className="pl-8 h-9" value={sigSearch} onChange={e=>setSigSearch(e.target.value)}/>
                 </div>
                 <Select value={sigStatus} onValueChange={setSigStatus}>
-                  <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Statut"/></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full sm:w-40"><SelectValue placeholder="Statut"/></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous</SelectItem>
                     <SelectItem value="Nouveau">Nouveau</SelectItem>
@@ -342,7 +497,7 @@ export default function AlertesPage() {
                     <SelectItem value="Fermé">Fermé</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={()=>setSigRefresh(r=>r+1)}>
+                <Button variant="outline" size="sm" className="h-9 w-full gap-1.5 sm:w-auto" onClick={()=>setSigRefresh(r=>r+1)}>
                   <RefreshCw className={cn("h-3.5 w-3.5",sigLoading&&"animate-spin")}/> Actualiser
                 </Button>
               </CardContent>
@@ -383,7 +538,7 @@ export default function AlertesPage() {
                             </div>
                           </div>
                           {/* Boutons workflow */}
-                          <div className="flex flex-wrap sm:flex-col gap-2 sm:items-end sm:min-w-36 shrink-0">
+                          <div className="flex w-full flex-col gap-2 sm:min-w-36 sm:w-auto sm:items-end shrink-0">
                             {updatingId===inc.id?(
                               <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin"/> Mise à jour…
@@ -391,25 +546,25 @@ export default function AlertesPage() {
                             ):(
                               <>
                                 {inc.status==="Nouveau"&&(
-                                  <Button size="sm" className="h-7 text-xs bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25"
+                                  <Button size="sm" className="h-8 w-full text-xs bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 sm:h-7"
                                     onClick={()=>handleStatusUpdate(inc.id,"En cours")}>
                                     Prendre en charge
                                   </Button>
                                 )}
                                 {inc.status==="En cours"&&(
-                                  <Button size="sm" className="h-7 text-xs bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25"
+                                  <Button size="sm" className="h-8 w-full text-xs bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 sm:h-7"
                                     onClick={()=>handleStatusUpdate(inc.id,"Résolu")}>
                                     Marquer résolu ✓
                                   </Button>
                                 )}
                                 {(inc.status==="Résolu"||inc.status==="En cours")&&(
-                                  <Button variant="outline" size="sm" className="h-7 text-xs"
+                                  <Button variant="outline" size="sm" className="h-8 w-full text-xs sm:h-7"
                                     onClick={()=>handleStatusUpdate(inc.id,"Fermé")}>
                                     Fermer
                                   </Button>
                                 )}
                                 {inc.status==="Fermé"&&(
-                                  <Button variant="outline" size="sm" className="h-7 text-xs"
+                                  <Button variant="outline" size="sm" className="h-8 w-full text-xs sm:h-7"
                                     onClick={()=>handleStatusUpdate(inc.id,"Nouveau")}>
                                     Réouvrir
                                   </Button>

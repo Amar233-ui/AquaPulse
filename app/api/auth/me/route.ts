@@ -10,6 +10,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Non authentifie" }, { status: 401 })
   }
 
-  const notifications = await getNotificationCount(user.role)
+  const notifications = await getNotificationCount(user.role, user.id)
   return NextResponse.json({ user, notifications })
 }

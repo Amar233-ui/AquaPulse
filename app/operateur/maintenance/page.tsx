@@ -12,9 +12,10 @@ import {
   ChevronRight, X, Zap, MapPin, FileText, Gauge,
   PlayCircle, CheckCircle, Timer, Package
 } from "lucide-react"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useApiQuery } from "@/hooks/use-api-query"
+import { useMarkNotificationsViewed } from "@/hooks/use-mark-notifications-viewed"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,8 +29,21 @@ interface MaintenanceTask {
   priority: "Haute" | "Moyenne" | "Basse"
   dueDate: string; confidence: number
   status: "Urgent" | "Planifie" | "En cours" | "Termine"
+  source?: "ai" | "db"
   alertId: string | null
+  assignedOperatorId?: number | null
+  assignedOperatorName?: string | null
+  assignedAt?: string | null
   linkedAlert: LinkedAlert | null
+  eahFacilityId?: number | null
+  linkedEah?: {
+    id: number
+    name: string
+    type: string
+    quartier: string
+    address: string
+    status: string
+  } | null
   daysUntilDue: number
   isOverdue: boolean
   estimatedDuration: string
@@ -40,6 +54,7 @@ interface MaintenanceTask {
 interface MaintenanceResponse {
   stats: { pending: number; completedThisMonth: number; aiPredictions: number; avoidedCost: number }
   items: MaintenanceTask[]
+  ai_available?: boolean
 }
 
 // Fallback detail enrichment côté client pour les tâches sans données enrichies
@@ -84,6 +99,7 @@ function getTaskDetails(type: string) {
 const DEFAULT_DATA: MaintenanceResponse = {
   stats: { pending: 0, completedThisMonth: 0, aiPredictions: 0, avoidedCost: 0 },
   items: [],
+  ai_available: false,
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -109,12 +125,22 @@ const SEVERITY_COLORS: Record<string, string> = {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MaintenancePage() {
+  useMarkNotificationsViewed(["maintenance"])
+
   const [selected, setSelected] = useState<MaintenanceTask | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
   const [refresh,  setRefresh]  = useState(0)
 
   const query = `/api/operateur/maintenance${refresh > 0 ? `?_r=${refresh}` : ""}`
   const { data, loading } = useApiQuery<MaintenanceResponse>(query, DEFAULT_DATA)
+
+  useEffect(() => {
+    if (!selected) return
+    const updated = data.items.find((item) => item.id === selected.id)
+    if (updated) {
+      setSelected(updated)
+    }
+  }, [data.items, selected?.id])
 
   const updateStatus = useCallback(async (id: string, newStatus: string) => {
     setUpdating(id)
@@ -138,7 +164,7 @@ export default function MaintenancePage() {
 
   return (
     <DashboardLayout role="operateur" title="Maintenance Prédictive">
-      <div className="flex gap-4" style={{ minHeight: "calc(100vh - 9rem)" }}>
+      <div className="flex flex-col gap-4 lg:flex-row" style={{ minHeight: "calc(100vh - 9rem)" }}>
 
         {/* ── LISTE ── */}
         <div className="flex-1 min-w-0 space-y-4">
@@ -157,15 +183,56 @@ export default function MaintenancePage() {
               <>
                 <KPICard title="En Attente" value={`${data.stats.pending}`} change="À planifier en priorité" changeType="negative" icon={Clock} />
                 <KPICard title="Complétées" value={`${data.stats.completedThisMonth}`} change="Ce mois" changeType="positive" icon={CheckCircle2} />
-                <KPICard title="Prédictions IA" value={`${data.stats.aiPredictions}`} change="Détectées automatiquement" changeType="neutral" icon={AlertTriangle} iconColor="bg-warning/15" />
+                <KPICard
+                  title={data.ai_available ? "Prédictions IA" : "Tâches scorées"}
+                  value={`${data.stats.aiPredictions}`}
+                  change={data.ai_available ? "Détectées automatiquement" : "Confiance issue des tâches enregistrées"}
+                  changeType="neutral"
+                  icon={AlertTriangle}
+                  iconColor="bg-warning/15"
+                />
                 <KPICard title="Coût Évité" value={`${data.stats.avoidedCost.toLocaleString()} FCFA`} change="Estimation mensuelle" changeType="positive" icon={Wrench} />
               </>
             )}
           </div>
 
+          <Card className={cn(
+            "border shadow-sm",
+            data.ai_available
+              ? "border-blue-500/25 bg-blue-500/5"
+              : "border-slate-500/25 bg-slate-500/5"
+          )}>
+            <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">État IA maintenance</p>
+                <p className="text-sm text-foreground">
+                  {data.ai_available
+                    ? "Les priorités ci-dessous sont enrichies par le moteur IA."
+                    : "Le moteur IA maintenance n'est pas branché sur cette vue pour le moment."}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {data.ai_available
+                    ? "Les scores et urgences reflètent les prédictions du microservice."
+                    : "Les tâches affichées proviennent de la base locale; le score visible correspond aux données déjà enregistrées."}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "self-start text-[10px] sm:self-center",
+                  data.ai_available
+                    ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
+                    : "border-slate-500/30 bg-slate-500/10 text-slate-400"
+                )}
+              >
+                {data.ai_available ? "IA active" : "Sans IA live"}
+              </Badge>
+            </CardContent>
+          </Card>
+
           {/* Tableau tâches */}
           <Card className="border border-border/60 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Wrench className="h-4 w-4 text-muted-foreground" />
                 Plan de Maintenance Prédictive
@@ -173,7 +240,7 @@ export default function MaintenancePage() {
                   <span className="text-xs font-normal text-muted-foreground">({data.items.length} tâches)</span>
                 )}
               </CardTitle>
-              <Button variant="outline" size="sm" className="gap-1.5 h-8">
+              <Button variant="outline" size="sm" className="h-8 w-full gap-1.5 sm:w-auto">
                 <Calendar className="h-3.5 w-3.5" /> Calendrier
               </Button>
             </CardHeader>
@@ -225,14 +292,40 @@ export default function MaintenancePage() {
                               En retard
                             </Badge>
                           )}
-                          {task.alertId && (
+                          {task.source === "ai" && (
                             <span className="flex items-center gap-0.5 text-[10px] text-amber-400">
                               <Zap className="h-2.5 w-2.5" /> IA
+                            </span>
+                          )}
+                          {task.source !== "ai" && task.alertId && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-blue-400">
+                              <Wrench className="h-2.5 w-2.5" /> Liée à une alerte
+                            </span>
+                          )}
+                          {task.linkedEah && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-cyan-400">
+                              <MapPin className="h-2.5 w-2.5" /> Site EAH
+                            </span>
+                          )}
+                          {task.assignedOperatorName && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-blue-400">
+                              <CheckCircle2 className="h-2.5 w-2.5" /> {task.assignedOperatorName}
                             </span>
                           )}
                         </div>
                         <p className="text-sm font-medium text-foreground truncate">{task.asset}</p>
                         <p className="text-xs text-muted-foreground">{task.type}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground sm:hidden">
+                          <span>{task.confidence}% confiance</span>
+                          <span>{task.dueDate}</span>
+                          {daysUntil !== 0 && (
+                            <span className={cn(
+                              daysUntil < 0 ? "text-red-400" : daysUntil <= 3 ? "text-amber-400" : "text-muted-foreground",
+                            )}>
+                              {daysUntil < 0 ? `${Math.abs(daysUntil)}j retard` : `dans ${daysUntil}j`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="hidden sm:flex items-center gap-5 shrink-0">
                         <div className="text-right">
@@ -272,8 +365,10 @@ export default function MaintenancePage() {
           const isOverdue = selected.isOverdue ?? (daysUntil < 0 && selected.status !== "Termine")
 
           return (
-            <div className="w-96 shrink-0 sticky top-0 overflow-y-auto" style={{ maxHeight: "calc(100vh - 9rem)" }}>
-              <Card className="border border-border/60 shadow-sm">
+            <>
+            <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSelected(null)} />
+            <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-border/60 bg-background lg:static lg:z-auto lg:max-h-[calc(100vh-9rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:rounded-none lg:border-0 lg:bg-transparent">
+              <Card className="border-0 shadow-none lg:border lg:border-border/60 lg:shadow-sm">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1.5 flex-1 min-w-0">
@@ -292,6 +387,12 @@ export default function MaintenancePage() {
                       </div>
                       <p className="text-sm font-bold text-foreground leading-tight">{selected.asset}</p>
                       <p className="text-xs text-muted-foreground">{selected.type}</p>
+                      {selected.assignedOperatorName && (
+                        <p className="text-[11px] text-blue-300">
+                          Affectée à {selected.assignedOperatorName}
+                          {selected.assignedAt ? ` • ${selected.assignedAt}` : ""}
+                        </p>
+                      )}
                     </div>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
                       onClick={() => setSelected(null)}>
@@ -303,7 +404,7 @@ export default function MaintenancePage() {
                 <CardContent className="space-y-4 pt-0 text-sm">
 
                   {/* Métriques */}
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <div className="rounded-lg bg-muted/30 p-2.5 text-center">
                       <Gauge className="h-3.5 w-3.5 mx-auto mb-1 text-primary" />
                       <p className="text-[10px] text-muted-foreground">Confiance IA</p>
@@ -338,7 +439,7 @@ export default function MaintenancePage() {
                       </div>
                       {selected.linkedAlert && (
                         <>
-                          <div className="grid grid-cols-2 gap-1 text-[10px]">
+                          <div className="grid grid-cols-1 gap-1 text-[10px] sm:grid-cols-2">
                             <div>
                               <span className="text-muted-foreground">Type : </span>
                               <span className="font-semibold text-foreground">{selected.linkedAlert.type}</span>
@@ -364,6 +465,28 @@ export default function MaintenancePage() {
                           </div>
                         </>
                       )}
+                    </div>
+                  )}
+
+                  {selected.linkedEah && (
+                    <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+                        <p className="text-xs font-bold text-cyan-400">Site EAH lié</p>
+                        <span className="ml-auto font-mono text-[10px] text-cyan-400/70">
+                          EAH-{selected.linkedEah.id}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-foreground">{selected.linkedEah.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {selected.linkedEah.quartier} · {selected.linkedEah.address}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                        <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
+                          {selected.linkedEah.type.replaceAll("_", " ")}
+                        </span>
+                        <span className="text-muted-foreground">Statut site: {selected.linkedEah.status}</span>
+                      </div>
                     </div>
                   )}
 
@@ -406,7 +529,7 @@ export default function MaintenancePage() {
                         Tâche complétée avec succès
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {(selected.status === "Planifie" || selected.status === "Urgent") && (
                           <Button size="sm"
                             className={cn(
@@ -447,6 +570,7 @@ export default function MaintenancePage() {
                 </CardContent>
               </Card>
             </div>
+            </>
           )
         })()}
       </div>

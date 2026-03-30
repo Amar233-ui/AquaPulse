@@ -20,6 +20,7 @@ import {
   X,
   LogOut,
   MoreHorizontal,
+  Waves,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AquaPulseLogo } from "@/components/aquapulse-logo"
@@ -35,15 +36,17 @@ interface NavItem {
 }
 
 const citizenNav: NavItem[] = [
-  { label: "Mon Eau",  href: "/citoyen",          icon: Droplets },
-  { label: "Carte",    href: "/citoyen/carte",    icon: Map },
-  { label: "Signaler", href: "/citoyen/signaler", icon: MessageSquareWarning },
+  { label: "Mon Eau",       href: "/citoyen",          icon: Droplets },
+  { label: "Carte",         href: "/citoyen/carte",    icon: Map },
+  { label: "EAH",           href: "/citoyen/eah",      icon: Waves },
+  { label: "Signaler",      href: "/citoyen/signaler", icon: MessageSquareWarning },
 ]
 
 const operatorNav: NavItem[] = [
   { label: "Tableau",        href: "/operateur",                icon: LayoutDashboard },
   { label: "Alertes",        href: "/operateur/alertes",        icon: AlertTriangle,         badge: 4 },
   { label: "Signalements",   href: "/operateur/signalements",   icon: MessageSquareWarning,  liveCount: true },
+  { label: "EAH",            href: "/operateur/eah",            icon: Waves },
   { label: "Jumeau",         href: "/operateur/carte",          icon: Map },
   { label: "Maintenance",    href: "/operateur/maintenance",    icon: Wrench },
   { label: "Capteurs",       href: "/operateur/capteurs",       icon: Radio },

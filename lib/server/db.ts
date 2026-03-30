@@ -102,6 +102,22 @@ function createSchema(db: DatabaseSync) {
       FOREIGN KEY (sector_id) REFERENCES sectors(id)
     );
 
+    CREATE TABLE IF NOT EXISTS eah_facilities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('latrine_publique', 'point_eau_gratuit', 'borne_fontaine', 'bloc_hygiene', 'station_lavage_mains')),
+      quartier TEXT NOT NULL,
+      address TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('operationnel', 'degradé', 'hors_service')),
+      gender_accessible INTEGER NOT NULL DEFAULT 0,
+      disabled_accessible INTEGER NOT NULL DEFAULT 0,
+      school_nearby INTEGER NOT NULL DEFAULT 0,
+      last_inspection TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS maintenance_tasks (
       id TEXT PRIMARY KEY,
       asset TEXT NOT NULL,
@@ -111,6 +127,52 @@ function createSchema(db: DatabaseSync) {
       confidence INTEGER NOT NULL,
       status TEXT NOT NULL,
       alert_id TEXT,
+      assigned_operator_id INTEGER,
+      assigned_operator_name TEXT,
+      assigned_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (alert_id) REFERENCES alerts(id),
+      FOREIGN KEY (assigned_operator_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS asset_health_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sensor_id TEXT NOT NULL,
+      recorded_at TEXT NOT NULL,
+      temperature_c REAL NOT NULL,
+      vibration_score REAL NOT NULL,
+      runtime_hours REAL NOT NULL,
+      load_pct REAL NOT NULL,
+      acoustic_score REAL NOT NULL,
+      pressure_delta REAL NOT NULL,
+      flow_delta REAL NOT NULL,
+      failure_within_30d INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (sensor_id) REFERENCES sensors(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS intervention_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_id TEXT,
+      task_id TEXT,
+      sensor_id TEXT,
+      maintenance_type TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK(outcome IN ('resolved', 'mitigated', 'false_alarm', 'replaced', 'inspected')),
+      root_cause TEXT,
+      downtime_hours REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (alert_id) REFERENCES alerts(id),
+      FOREIGN KEY (task_id) REFERENCES maintenance_tasks(id),
+      FOREIGN KEY (sensor_id) REFERENCES sensors(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_id TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK(source_type IN ('db', 'ai_generated', 'manual')),
+      is_validated INTEGER NOT NULL DEFAULT 1,
+      false_positive INTEGER NOT NULL DEFAULT 0,
+      operator_label TEXT NOT NULL,
+      notes TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (alert_id) REFERENCES alerts(id)
     );
@@ -125,8 +187,14 @@ function createSchema(db: DatabaseSync) {
       reporter_name TEXT,
       reporter_email TEXT,
       status TEXT NOT NULL DEFAULT 'Nouveau',
+      assigned_operator_id INTEGER,
+      assigned_operator_name TEXT,
+      assigned_at TEXT,
       created_at TEXT NOT NULL,
       resolved_at TEXT,
+      eah_facility_id INTEGER,
+      FOREIGN KEY (assigned_operator_id) REFERENCES users(id),
+      FOREIGN KEY (eah_facility_id) REFERENCES eah_facilities(id),
       FOREIGN KEY (reporter_user_id) REFERENCES users(id)
     );
 
@@ -175,6 +243,14 @@ function createSchema(db: DatabaseSync) {
       FOREIGN KEY (to_node_id) REFERENCES map_nodes(id)
     );
 
+    CREATE TABLE IF NOT EXISTS notification_reads (
+      user_id INTEGER NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('alertes', 'signalements', 'maintenance', 'eah')),
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, category),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS quality_readings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       metric TEXT NOT NULL,
@@ -215,8 +291,61 @@ function createSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_sensors_status ON sensors(status);
     CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
     CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);
+    CREATE INDEX IF NOT EXISTS idx_eah_quartier ON eah_facilities(quartier);
+    CREATE INDEX IF NOT EXISTS idx_eah_status ON eah_facilities(status);
     CREATE INDEX IF NOT EXISTS idx_quality_metric_time ON quality_readings(metric, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_flow_metric_time ON flow_readings(metric, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_asset_snapshots_sensor_time ON asset_health_snapshots(sensor_id, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_interventions_sensor_time ON intervention_reports(sensor_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_alert_feedback_alert_time ON alert_feedback(alert_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_notification_reads_user_category ON notification_reads(user_id, category);
+  `)
+}
+
+function applyMigrations(db: DatabaseSync) {
+  const maintenanceColumns = db
+    .prepare("PRAGMA table_info(maintenance_tasks)")
+    .all() as Array<{ name: string }>
+
+  if (!maintenanceColumns.some((column) => column.name === "eah_facility_id")) {
+    db.exec("ALTER TABLE maintenance_tasks ADD COLUMN eah_facility_id INTEGER REFERENCES eah_facilities(id);")
+  }
+  if (!maintenanceColumns.some((column) => column.name === "assigned_operator_id")) {
+    db.exec("ALTER TABLE maintenance_tasks ADD COLUMN assigned_operator_id INTEGER REFERENCES users(id);")
+  }
+  if (!maintenanceColumns.some((column) => column.name === "assigned_operator_name")) {
+    db.exec("ALTER TABLE maintenance_tasks ADD COLUMN assigned_operator_name TEXT;")
+  }
+  if (!maintenanceColumns.some((column) => column.name === "assigned_at")) {
+    db.exec("ALTER TABLE maintenance_tasks ADD COLUMN assigned_at TEXT;")
+  }
+
+  const incidentColumns = db
+    .prepare("PRAGMA table_info(incidents)")
+    .all() as Array<{ name: string }>
+
+  if (!incidentColumns.some((column) => column.name === "eah_facility_id")) {
+    db.exec("ALTER TABLE incidents ADD COLUMN eah_facility_id INTEGER REFERENCES eah_facilities(id);")
+  }
+  if (!incidentColumns.some((column) => column.name === "assigned_operator_id")) {
+    db.exec("ALTER TABLE incidents ADD COLUMN assigned_operator_id INTEGER REFERENCES users(id);")
+  }
+  if (!incidentColumns.some((column) => column.name === "assigned_operator_name")) {
+    db.exec("ALTER TABLE incidents ADD COLUMN assigned_operator_name TEXT;")
+  }
+  if (!incidentColumns.some((column) => column.name === "assigned_at")) {
+    db.exec("ALTER TABLE incidents ADD COLUMN assigned_at TEXT;")
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notification_reads (
+      user_id INTEGER NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('alertes', 'signalements', 'maintenance', 'eah')),
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, category),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_notification_reads_user_category ON notification_reads(user_id, category);
   `)
 }
 
@@ -512,6 +641,188 @@ function seedMaintenance(db: DatabaseSync) {
   }
 }
 
+function seedEahFacilities(db: DatabaseSync) {
+  const count = db.prepare("SELECT COUNT(*) as count FROM eah_facilities").get() as { count: number }
+  if (count.count > 0) {
+    return
+  }
+
+  const now = new Date().toISOString()
+  const insert = db.prepare(`
+    INSERT INTO eah_facilities (
+      name, type, quartier, address, status, gender_accessible,
+      disabled_accessible, school_nearby, last_inspection, notes, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const rows = [
+    ["Latrine Marché Médina", "latrine_publique", "Médina", "Marché central Médina", "hors_service", 1, 0, 0, isoDaysAgo(16), "Bloc sanitaire fermé, fuite sur la chasse et absence d'eau.", now, now],
+    ["Borne Fontaine Fann 2", "borne_fontaine", "Fann", "Avenue Cheikh Anta Diop, Fann", "degradé", 1, 1, 1, isoDaysAgo(9), "Pression intermittente aux heures de pointe.", now, now],
+    ["Point Eau Gratuit HLM Est", "point_eau_gratuit", "HLM", "HLM 5, terrain communal", "operationnel", 1, 1, 1, isoDaysAgo(4), null, now, now],
+    ["Bloc Hygiène Grand Dakar Sud", "bloc_hygiene", "Grand Dakar", "Rue 14 x Avenue Bourguiba", "degradé", 1, 0, 1, isoDaysAgo(12), "Lavabo bouché et savon indisponible.", now, now],
+    ["Station Lavage Mains École Pikine 3", "station_lavage_mains", "Pikine", "École élémentaire Pikine 3", "hors_service", 1, 1, 1, isoDaysAgo(21), "Réservoir vide et pédale cassée.", now, now],
+    ["Borne Fontaine Parcelles U17", "borne_fontaine", "Parcelles Assainies", "Unité 17, place publique", "operationnel", 1, 1, 0, isoDaysAgo(5), null, now, now],
+    ["Latrine Publique Guédiawaye Plage", "latrine_publique", "Guédiawaye", "Front de mer Guédiawaye", "degradé", 1, 0, 0, isoDaysAgo(14), "Nettoyage insuffisant et éclairage hors service.", now, now],
+    ["Point Eau Gratuit Plateau Gare", "point_eau_gratuit", "Plateau", "Esplanade gare routière", "operationnel", 1, 1, 0, isoDaysAgo(6), null, now, now],
+    ["Bloc Hygiène Rufisque Centre", "bloc_hygiene", "Rufisque", "Marché Rufisque Centre", "operationnel", 1, 0, 0, isoDaysAgo(3), null, now, now],
+    ["Station Lavage Mains École Grand Dakar", "station_lavage_mains", "Grand Dakar", "École Grand Dakar 2", "degradé", 1, 1, 1, isoDaysAgo(11), "Débit faible et réapprovisionnement savon à faire.", now, now],
+    ["Borne Fontaine Médina Santhiaba", "borne_fontaine", "Médina", "Quartier Santhiaba", "operationnel", 1, 0, 0, isoDaysAgo(7), null, now, now],
+    ["Latrine Publique Parcelles Unité 8", "latrine_publique", "Parcelles Assainies", "Terminus Unité 8", "degradé", 1, 0, 0, isoDaysAgo(19), "Porte endommagée et chasse irrégulière.", now, now],
+  ] as const
+
+  for (const row of rows) {
+    insert.run(...row)
+  }
+}
+
+function seedAiTrainingSignals(db: DatabaseSync) {
+  const snapshotCount = db.prepare("SELECT COUNT(*) as count FROM asset_health_snapshots").get() as { count: number }
+  if (snapshotCount.count === 0) {
+    const monitoredSensors = db.prepare(`
+      SELECT id, type, location, status, battery
+      FROM sensors
+      WHERE type IN ('Debit', 'Pression', 'Acoustique')
+      ORDER BY id ASC
+      LIMIT 36
+    `).all() as Array<{ id: string; type: string; location: string; status: string; battery: number }>
+
+    const insertSnapshot = db.prepare(`
+      INSERT INTO asset_health_snapshots (
+        sensor_id, recorded_at, temperature_c, vibration_score, runtime_hours,
+        load_pct, acoustic_score, pressure_delta, flow_delta, failure_within_30d
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const highRiskSensors = new Set(["SNR-011", "SNR-022", "SNR-029", "SNR-033", "SNR-044", "SNR-055"])
+    const mediumRiskSensors = new Set(["SNR-006", "SNR-015", "SNR-027", "SNR-038", "SNR-049"])
+
+    for (const sensor of monitoredSensors) {
+      const sensorIndex = Number(sensor.id.split("-")[1] ?? "0")
+      const highRisk = highRiskSensors.has(sensor.id)
+      const mediumRisk = mediumRiskSensors.has(sensor.id) || sensor.status === "alerte" || sensorIndex % 7 === 0
+
+      for (let day = 75; day >= 0; day -= 3) {
+        const ageFactor = day / 75
+        const vibrationBase = highRisk ? 0.74 : mediumRisk ? 0.42 : 0.18
+        const temperatureBase = highRisk ? 69 : mediumRisk ? 58 : 44
+        const loadBase = highRisk ? 91 : sensor.type === "Debit" ? 72 : sensor.type === "Pression" ? 65 : 54
+        const acousticBase = sensor.type === "Acoustique"
+          ? (highRisk ? 0.92 : mediumRisk ? 0.68 : 0.22)
+          : (highRisk ? 0.55 : mediumRisk ? 0.31 : 0.12)
+        const pressureDelta = sensor.type === "Pression"
+          ? (highRisk ? -0.78 : mediumRisk ? -0.42 : -0.08)
+          : (highRisk ? -0.46 : mediumRisk ? -0.24 : -0.03)
+        const flowDelta = sensor.type === "Debit"
+          ? (highRisk ? 185 : mediumRisk ? 112 : 24)
+          : (highRisk ? 96 : mediumRisk ? 58 : 12)
+
+        const failureSoon = highRisk ? (day <= 36 ? 1 : 0) : mediumRisk && day <= 18 ? 1 : 0
+
+        insertSnapshot.run(
+          sensor.id,
+          isoDaysAgo(day),
+          Number((temperatureBase + Math.random() * (highRisk ? 7 : 4) - ageFactor * 3).toFixed(1)),
+          Number((vibrationBase + Math.random() * (highRisk ? 0.24 : 0.18)).toFixed(3)),
+          Number(((highRisk ? 4800 : 2800) + (75 - day) * (highRisk ? 13 : 7) + Math.random() * 120).toFixed(1)),
+          Number((loadBase + Math.random() * 18 - ageFactor * 4).toFixed(1)),
+          Number((acousticBase + Math.random() * (highRisk ? 0.22 : 0.15)).toFixed(3)),
+          Number((pressureDelta + (Math.random() * 0.12 - 0.06)).toFixed(3)),
+          Number((flowDelta + (Math.random() * (highRisk ? 34 : 20) - (highRisk ? 12 : 10))).toFixed(1)),
+          failureSoon,
+        )
+      }
+    }
+  }
+
+  const interventionCount = db.prepare("SELECT COUNT(*) as count FROM intervention_reports").get() as { count: number }
+  if (interventionCount.count === 0) {
+    const rows = db.prepare(`
+      SELECT mt.id as taskId, mt.type as taskType, mt.alert_id as alertId, a.source_sensor_id as sensorId,
+             a.classification as classification, mt.status as taskStatus
+      FROM maintenance_tasks mt
+      LEFT JOIN alerts a ON a.id = mt.alert_id
+      ORDER BY mt.id ASC
+    `).all() as Array<{
+      taskId: string
+      taskType: string
+      alertId: string | null
+      sensorId: string | null
+      classification: string | null
+      taskStatus: string
+    }>
+
+    const insertIntervention = db.prepare(`
+      INSERT INTO intervention_reports (
+        alert_id, task_id, sensor_id, maintenance_type, outcome, root_cause, downtime_hours, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    for (const row of rows) {
+      const outcome =
+        row.taskStatus === "Termine" ? "resolved"
+        : row.classification === "Fuite" ? "mitigated"
+        : row.classification === "Panne pompe" ? "replaced"
+        : "inspected"
+
+      const rootCause =
+        row.classification === "Fuite" ? "microfissure canalisation fonte"
+        : row.classification === "Panne pompe" ? "usure palier pompe"
+        : row.classification === "Contamination" ? "chloration insuffisante"
+        : row.classification === "Fraude" ? "branchements illicites"
+        : "anomalie réseau confirmée"
+
+      insertIntervention.run(
+        row.alertId,
+        row.taskId,
+        row.sensorId,
+        row.taskType,
+        outcome,
+        rootCause,
+        row.classification === "Panne pompe" ? 4.5 : row.classification === "Fuite" ? 2.0 : 1.0,
+        isoDaysAgo(randomInRange(3, 35)),
+      )
+    }
+  }
+
+  const feedbackCount = db.prepare("SELECT COUNT(*) as count FROM alert_feedback").get() as { count: number }
+  if (feedbackCount.count === 0) {
+    const alerts = db.prepare(`
+      SELECT id, classification, severity, status
+      FROM alerts
+      ORDER BY created_at DESC
+      LIMIT 30
+    `).all() as Array<{ id: string; classification: string; severity: string; status: string }>
+
+    const insertFeedback = db.prepare(`
+      INSERT INTO alert_feedback (
+        alert_id, source_type, is_validated, false_positive, operator_label, notes, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    for (const alert of alerts) {
+      const falsePositive = alert.classification === "Fraude" && alert.severity === "faible" ? 1 : 0
+      const validated = falsePositive ? 0 : 1
+      const label =
+        falsePositive ? "fausse_alerte"
+        : alert.status === "Surveillance" ? "surveillance"
+        : alert.status === "En cours" ? "confirmee_critique"
+        : "confirmee"
+
+      insertFeedback.run(
+        alert.id,
+        "db",
+        validated,
+        falsePositive,
+        label,
+        falsePositive
+          ? "Signal faible non confirmé au terrain."
+          : "Alerte confirmée par équipe terrain et prise en compte dans l'historique opérateur.",
+        isoDaysAgo(randomInRange(1, 20)),
+      )
+    }
+  }
+}
+
 function seedReadings(db: DatabaseSync) {
   const qualityCount = db.prepare("SELECT COUNT(*) as count FROM quality_readings").get() as { count: number }
   if (qualityCount.count === 0) {
@@ -594,6 +905,56 @@ function seedIncidents(db: DatabaseSync) {
       "citoyen@aquapulse.io",
       incident.status,
       isoHoursAgo(incident.hoursAgo),
+    )
+  }
+}
+
+function seedEahIncidents(db: DatabaseSync) {
+  const row = db.prepare("SELECT COUNT(*) as count FROM incidents WHERE eah_facility_id IS NOT NULL").get() as { count: number }
+  if (row.count > 0) {
+    return
+  }
+
+  const citoyen = db.prepare("SELECT id FROM users WHERE role = 'citoyen' LIMIT 1").get() as { id: number } | undefined
+  const facilities = db.prepare("SELECT id, name, quartier FROM eah_facilities ORDER BY id ASC").all() as Array<{
+    id: number
+    name: string
+    quartier: string
+  }>
+
+  if (facilities.length === 0) {
+    return
+  }
+
+  const byId = new Map(facilities.map((facility) => [facility.id, facility]))
+  const insertIncident = db.prepare(`
+    INSERT INTO incidents (
+      reporter_user_id, type, location, description, reporter_name, reporter_email, status, created_at, eah_facility_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const eahIncidents = [
+    { facilityId: 1, type: "autre", status: "Nouveau", hoursAgo: 5, reporterName: "Awa N.", reporterEmail: "awa@example.com", description: "La latrine est fermée et il n'y a pas d'eau sur place." },
+    { facilityId: 1, type: "autre", status: "Nouveau", hoursAgo: 3, reporterName: "Moussa D.", reporterEmail: "moussa@example.com", description: "Le site EAH reste inaccessible ce matin, odeur forte et aucun service." },
+    { facilityId: 1, type: "autre", status: "En cours", hoursAgo: 2, reporterName: "Fatou S.", reporterEmail: "fatou@example.com", description: "Toujours fermé au marché Médina, besoin d'intervention rapide." },
+    { facilityId: 5, type: "autre", status: "Nouveau", hoursAgo: 7, reporterName: "Khadija B.", reporterEmail: "khadija@example.com", description: "La station de lavage à l'école Pikine 3 ne fonctionne plus." },
+    { facilityId: 5, type: "autre", status: "Nouveau", hoursAgo: 4, reporterName: "Abdou C.", reporterEmail: "abdou@example.com", description: "Les enfants n'ont plus accès au lavage des mains, réservoir vide." },
+    { facilityId: 2, type: "pression", status: "Nouveau", hoursAgo: 9, reporterName: "Seynabou T.", reporterEmail: "seynabou@example.com", description: "La borne-fontaine de Fann a une pression très faible." },
+  ] as const
+
+  for (const incident of eahIncidents) {
+    const facility = byId.get(incident.facilityId)
+    if (!facility) continue
+    insertIncident.run(
+      citoyen?.id ?? null,
+      incident.type,
+      `${facility.quartier} — ${facility.name}`,
+      incident.description,
+      incident.reporterName,
+      incident.reporterEmail,
+      incident.status,
+      isoHoursAgo(incident.hoursAgo),
+      incident.facilityId,
     )
   }
 }
@@ -779,10 +1140,13 @@ async function seedDatabase(db: DatabaseSync) {
   seedSensors(db)
   seedMap(db)
   seedAlerts(db)
+  seedEahFacilities(db)
   seedMaintenance(db)
   seedQuartierQuality(db)
   seedReadings(db)
   seedIncidents(db)
+  seedEahIncidents(db)
+  seedAiTrainingSignals(db)
   seedSimulations(db)
   seedSettings(db)
   seedMonthlyActivity(db)
@@ -790,6 +1154,7 @@ async function seedDatabase(db: DatabaseSync) {
 
 async function initializeDatabase(db: DatabaseSync) {
   createSchema(db)
+  applyMigrations(db)
   await seedDatabase(db)
 }
 

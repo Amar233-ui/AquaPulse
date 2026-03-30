@@ -38,6 +38,14 @@ class DataProvider:
         except Exception as e:
             logger.warning(f"DB non accessible, mode synthétique : {e}")
 
+    @staticmethod
+    def _parse_dt(value: str) -> datetime:
+        normalized = value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is not None:
+            return dt.replace(tzinfo=None)
+        return dt
+
     # ─── DONNÉES POUR L'ENTRAÎNEMENT ────────────────────────────────────────
 
     def load_training_data(self) -> dict[str, Any]:
@@ -65,7 +73,27 @@ class DataProvider:
 
         # Alertes historiques (labels pour supervisé)
         alert_rows = db.execute(
-            "SELECT type, classification, severity, probability, created_at FROM alerts"
+            "SELECT id, type, classification, severity, probability, created_at FROM alerts"
+        ).fetchall()
+
+        feedback_rows = db.execute(
+            """SELECT alert_id, is_validated, false_positive, operator_label, created_at
+               FROM alert_feedback
+               ORDER BY created_at"""
+        ).fetchall()
+
+        asset_snapshot_rows = db.execute(
+            """SELECT sensor_id, recorded_at, temperature_c, vibration_score, runtime_hours,
+                      load_pct, acoustic_score, pressure_delta, flow_delta, failure_within_30d
+               FROM asset_health_snapshots
+               ORDER BY recorded_at"""
+        ).fetchall()
+
+        intervention_rows = db.execute(
+            """SELECT alert_id, task_id, sensor_id, maintenance_type, outcome,
+                      root_cause, downtime_hours, created_at
+               FROM intervention_reports
+               ORDER BY created_at"""
         ).fetchall()
 
         # Capteurs
@@ -76,23 +104,34 @@ class DataProvider:
         db.close()
 
         # Construire les séries temporelles
-        sensor_readings = self._build_sensor_series(flow_rows, quality_rows)
+        sensor_readings = self._build_sensor_series(flow_rows, quality_rows, alert_rows, feedback_rows, asset_snapshot_rows)
 
         # Si trop peu de données réelles, enrichir avec synthétique
         if len(sensor_readings) < 50:
             logger.info("Données DB insuffisantes, enrichissement synthétique")
             synth = self._generate_synthetic_data()
             sensor_readings = synth["sensor_readings"] + sensor_readings
+            asset_snapshots = synth["asset_snapshots"] + [dict(r) for r in asset_snapshot_rows]
+            interventions = synth["interventions"] + [dict(r) for r in intervention_rows]
+            alert_feedback = synth["alert_feedback"] + [dict(r) for r in feedback_rows]
+        else:
+            asset_snapshots = [dict(r) for r in asset_snapshot_rows]
+            interventions = [dict(r) for r in intervention_rows]
+            alert_feedback = [dict(r) for r in feedback_rows]
 
         return {
             "sensor_readings": sensor_readings,
             "alerts_history": [dict(r) for r in alert_rows],
             "sensors": [dict(r) for r in sensor_rows],
+            "asset_snapshots": asset_snapshots,
+            "interventions": interventions,
+            "alert_feedback": alert_feedback,
         }
 
-    def _build_sensor_series(self, flow_rows, quality_rows) -> list[dict]:
+    def _build_sensor_series(self, flow_rows, quality_rows, alert_rows, feedback_rows, asset_snapshot_rows) -> list[dict]:
         """Combine flow + quality en série chronologique unifiée."""
         by_time: dict[str, dict] = {}
+        acoustic_by_time: dict[str, list[float]] = {}
 
         for r in flow_rows:
             t = r["recorded_at"][:16]  # minute précision
@@ -106,10 +145,43 @@ class DataProvider:
                 by_time[t] = {"timestamp": t}
             by_time[t][r["metric"]] = r["value"]
 
+        for r in asset_snapshot_rows:
+            t = r["recorded_at"][:16]
+            acoustic_by_time.setdefault(t, []).append(r["acoustic_score"])
+
+        validated_alerts: dict[str, tuple[int, str]] = {}
+        for fb in feedback_rows:
+            if fb["false_positive"]:
+                continue
+            validated_alerts[str(fb["alert_id"])] = (int(fb["is_validated"]), str(fb["operator_label"]))
+
+        anomaly_windows: list[tuple[datetime, datetime, str]] = []
+        for alert in alert_rows:
+            alert_time = self._parse_dt(str(alert["created_at"]))
+            feedback = validated_alerts.get(str(alert["id"]))
+            if feedback is None:
+                feedback = (1, str(alert["classification"]))
+            if feedback[0]:
+                anomaly_windows.append((
+                    alert_time - timedelta(hours=3),
+                    alert_time + timedelta(hours=2),
+                    feedback[1],
+                ))
+
         readings = []
         prev = None
         for t in sorted(by_time.keys()):
             row = by_time[t]
+            ts = self._parse_dt(t)
+            acoustic_values = acoustic_by_time.get(t, [])
+            is_anomaly = 0
+            label = "normal"
+            for start, end, window_label in anomaly_windows:
+                if start <= ts <= end:
+                    is_anomaly = 1
+                    label = window_label
+                    break
+
             reading = {
                 "timestamp": row["timestamp"],
                 "debit":        row.get("debit", 600.0),
@@ -119,11 +191,12 @@ class DataProvider:
                 "chlorine":     row.get("chlorine", 0.5),
                 "temperature":  row.get("temperature", 27.0),
                 "conductivity": row.get("conductivity", 420.0),
+                "acoustic":     round(sum(acoustic_values) / len(acoustic_values), 3) if acoustic_values else 0.08,
                 # Deltas (variation par rapport à la lecture précédente)
                 "debit_delta":    (row.get("debit", 600.0) - (prev["debit"] if prev else 600.0)),
                 "pression_delta": (row.get("pression", 3.0) - (prev["pression"] if prev else 3.0)),
-                # Label : anomalie si correspond à une alerte connue (simplifié)
-                "is_anomaly": 0,
+                "is_anomaly": is_anomaly,
+                "label":      label,
             }
             readings.append(reading)
             prev = reading
@@ -242,6 +315,9 @@ class DataProvider:
             "sensor_readings": readings,
             "alerts_history":  self._incidents_to_alerts(incidents),
             "sensors":         self._fake_sensors(),
+            "asset_snapshots": self._synthetic_asset_snapshots(incidents),
+            "interventions":   self._synthetic_interventions(incidents),
+            "alert_feedback":  self._synthetic_alert_feedback(incidents),
         }
 
     def _generate_synthetic_incidents(self, start: datetime, end: datetime) -> list[dict]:
@@ -316,6 +392,59 @@ class DataProvider:
             ], 1)
         ]
 
+    def _synthetic_asset_snapshots(self, incidents: list[dict]) -> list[dict]:
+        snapshots = []
+        sensors = self._fake_sensors()
+        now = datetime.now()
+        high_risk_sensors = {"SNR-003", "SNR-005", "SNR-007"}
+        medium_risk_sensors = {"SNR-002", "SNR-006"}
+
+        for sensor in sensors:
+            high_risk = sensor["id"] in high_risk_sensors
+            medium_risk = sensor["id"] in medium_risk_sensors or sensor["location"] in {"Fann", "Grand Dakar", "Pikine"}
+            for day in range(60, -1, -4):
+                recorded_at = (now - timedelta(days=day)).isoformat()
+                snapshots.append({
+                    "sensor_id": sensor["id"],
+                    "recorded_at": recorded_at,
+                    "temperature_c": round((68 if high_risk else 54 if medium_risk else 44) + random.random() * 8, 1),
+                    "vibration_score": round((0.76 if high_risk else 0.40 if medium_risk else 0.18) + random.random() * 0.18, 3),
+                    "runtime_hours": round((5200 if high_risk else 3200 if medium_risk else 2100) + random.random() * 1200, 1),
+                    "load_pct": round((90 if high_risk else 72 if medium_risk else 52) + random.random() * 12, 1),
+                    "acoustic_score": round((0.88 if high_risk else 0.42 if medium_risk else 0.10) + random.random() * 0.14, 3),
+                    "pressure_delta": round(((-0.72 if high_risk else -0.30 if medium_risk else -0.05) if sensor["type"] == "Pression" else (-0.38 if high_risk else -0.12 if medium_risk else 0.0)) + random.random() * 0.08, 3),
+                    "flow_delta": round(((175 if high_risk else 84 if medium_risk else 15) if sensor["type"] == "Debit" else (88 if high_risk else 34 if medium_risk else 4)) + random.random() * 20, 1),
+                    "failure_within_30d": 1 if high_risk and day <= 32 else 1 if medium_risk and day <= 16 else 0,
+                })
+        return snapshots
+
+    def _synthetic_interventions(self, incidents: list[dict]) -> list[dict]:
+        interventions = []
+        for idx, inc in enumerate(incidents[:18], 1):
+            interventions.append({
+                "alert_id": f"SYN-ALT-{idx:03d}",
+                "task_id": f"SYN-MT-{idx:03d}",
+                "sensor_id": f"SNR-{(idx % 8) + 1:03d}",
+                "maintenance_type": "Inspection" if inc["type"] in {"leak", "fraud"} else "Calibration",
+                "outcome": "resolved" if inc["type"] != "fraud" else "inspected",
+                "root_cause": inc["type"],
+                "downtime_hours": 4.0 if inc["type"] == "pump_failure" else 1.5,
+                "created_at": (inc["end"] + timedelta(hours=3)).isoformat(),
+            })
+        return interventions
+
+    def _synthetic_alert_feedback(self, incidents: list[dict]) -> list[dict]:
+        feedback = []
+        for idx, inc in enumerate(incidents[:24], 1):
+            feedback.append({
+                "alert_id": f"SYN-ALT-{idx:03d}",
+                "is_validated": 1,
+                "false_positive": 0,
+                "operator_label": inc["type"],
+                "created_at": (inc["start"] + timedelta(hours=1)).isoformat(),
+            })
+        return feedback
+
     # ─── DONNÉES TEMPS RÉEL ──────────────────────────────────────────────────
 
     def get_latest_readings(self) -> dict[str, Any]:
@@ -338,7 +467,19 @@ class DataProvider:
                 quality[r["metric"]] = {"value": r["value"], "unit": r["unit"], "at": r["recorded_at"]}
 
             sensors = [dict(r) for r in db.execute(
-                "SELECT id, type, location, status, battery, signal FROM sensors LIMIT 30"
+                """SELECT s.id, s.type, s.location, s.status, s.battery, s.signal,
+                          ah.temperature_c, ah.vibration_score, ah.runtime_hours,
+                          ah.load_pct, ah.acoustic_score, ah.pressure_delta, ah.flow_delta,
+                          ah.failure_within_30d, ah.recorded_at as health_recorded_at
+                   FROM sensors s
+                   LEFT JOIN asset_health_snapshots ah
+                     ON ah.sensor_id = s.id
+                    AND ah.recorded_at = (
+                      SELECT MAX(recorded_at)
+                      FROM asset_health_snapshots
+                      WHERE sensor_id = s.id
+                    )
+                   LIMIT 30"""
             ).fetchall()]
 
             db.close()
@@ -398,7 +539,19 @@ class DataProvider:
         try:
             db = self._get_db()
             sensors = db.execute(
-                "SELECT id, type, location, status, battery, signal FROM sensors WHERE type IN ('Debit','Pression')"
+                """SELECT s.id, s.type, s.location, s.status, s.battery, s.signal,
+                          ah.temperature_c, ah.vibration_score, ah.runtime_hours,
+                          ah.load_pct, ah.acoustic_score, ah.pressure_delta, ah.flow_delta,
+                          ah.failure_within_30d, ah.recorded_at as health_recorded_at
+                   FROM sensors s
+                   LEFT JOIN asset_health_snapshots ah
+                     ON ah.sensor_id = s.id
+                    AND ah.recorded_at = (
+                      SELECT MAX(recorded_at)
+                      FROM asset_health_snapshots
+                      WHERE sensor_id = s.id
+                    )
+                   WHERE s.type IN ('Debit','Pression','Acoustique')"""
             ).fetchall()
             db.close()
             return [dict(s) for s in sensors]

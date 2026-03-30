@@ -33,6 +33,7 @@ export async function GET(request: Request) {
       probability:    `${a.probability}%`,
       date:           a.date,
       status:         a.status,
+      description:    a.description,
       source_type:    "ai_generated" as const,
     }))
 
