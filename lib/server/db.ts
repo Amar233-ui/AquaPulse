@@ -47,7 +47,13 @@ function ensureDataDirectory() {
 }
 
 function createSchema(db: DatabaseSync) {
-  db.exec("PRAGMA foreign_keys = ON;")
+  // Sur Vercel /tmp, la DB repart de zéro à chaque cold start
+  // Les FK causent des erreurs si les tables référencées sont vides
+  // On les désactive en production serverless
+  const isServerless = process.env.VERCEL === "1" || process.env.VERCEL_ENV !== undefined
+  if (!isServerless) {
+    db.exec("PRAGMA foreign_keys = ON;")
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -192,10 +198,7 @@ function createSchema(db: DatabaseSync) {
       assigned_at TEXT,
       created_at TEXT NOT NULL,
       resolved_at TEXT,
-      eah_facility_id INTEGER,
-      FOREIGN KEY (assigned_operator_id) REFERENCES users(id),
-      FOREIGN KEY (eah_facility_id) REFERENCES eah_facilities(id),
-      FOREIGN KEY (reporter_user_id) REFERENCES users(id)
+      eah_facility_id INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS simulations (

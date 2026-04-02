@@ -194,8 +194,8 @@ function SignalerPageInner() {
           eahFacilityId: selectedFacility?.id ?? null,
         }),
       })
-      const json = (await response.json()) as { error?: string; incidentId?: number }
-      if (!response.ok) throw new Error(json.error ?? "Envoi impossible")
+      const json = (await response.json()) as { error?: string; detail?: string; incidentId?: number }
+      if (!response.ok) throw new Error((json.detail ?? json.error) ?? "Envoi impossible")
       setIncidentId(json.incidentId ?? null)
       setStatusMessage("ok")
     } catch (submitError) {

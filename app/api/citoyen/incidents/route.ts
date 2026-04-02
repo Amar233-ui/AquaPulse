@@ -35,6 +35,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, incidentId: incident.id }, { status: 201 })
   } catch (error) {
+    console.error("[incidents POST] Erreur:", error)
     return authErrorResponse(error)
   }
 }

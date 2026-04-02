@@ -102,7 +102,9 @@ export function authErrorResponse(error: unknown): NextResponse {
     return NextResponse.json({ error: error.message }, { status: error.status })
   }
 
-  return NextResponse.json({ error: "Erreur interne" }, { status: 500 })
+  const detail = error instanceof Error ? error.message : String(error)
+  console.error("[authErrorResponse]", detail)
+  return NextResponse.json({ error: "Erreur interne", detail }, { status: 500 })
 }
 
 export async function touchUserLogin(userId: number) {
