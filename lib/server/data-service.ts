@@ -454,9 +454,13 @@ export async function createIncident(input: {
 
   const newId = Number(result.lastInsertRowid)
 
-  // Attribuer les points "premier signalement" si citoyen connecté
+  // Attribuer les points — dans un try/catch pour ne pas bloquer le signalement
   if (input.reporterUserId) {
-    await handleIncidentPointsOnCreate(input.reporterUserId, newId, extractQuartierFromLocation(input.location))
+    try {
+      await handleIncidentPointsOnCreate(input.reporterUserId, newId, extractQuartierFromLocation(input.location))
+    } catch (e) {
+      console.error("[Points] Erreur attribution points création:", e)
+    }
   }
 
   return { id: newId }
@@ -1768,9 +1772,13 @@ export async function updateIncidentStatus(
     id,
   )
 
-  // Attribuer les points de résolution au citoyen reporter
+  // Attribuer les points de résolution — dans un try/catch pour ne pas bloquer
   if (status === "Résolu") {
-    await handleIncidentPointsOnResolve(id)
+    try {
+      await handleIncidentPointsOnResolve(id)
+    } catch (e) {
+      console.error("[Points] Erreur attribution points résolution:", e)
+    }
   }
 }
 

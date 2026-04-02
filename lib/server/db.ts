@@ -358,8 +358,7 @@ function applyMigrations(db: DatabaseSync) {
       reason TEXT NOT NULL,
       quartier TEXT,
       awarded_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id)
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
     CREATE INDEX IF NOT EXISTS idx_citizen_points_user ON citizen_points(user_id);
     CREATE INDEX IF NOT EXISTS idx_citizen_points_quartier ON citizen_points(quartier);
