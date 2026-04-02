@@ -17,6 +17,15 @@ import type {
   SensorItem,
   SimulationItem,
   UserRole,
+  EahFacility,
+  EahFacilityType,
+  EahFacilityStatus,
+  EahZoneStat,
+  EahDashboardData,
+  BadgeCode,
+  CitizenPointsProfile,
+  GlobalLeaderboard,
+  QuartierLeaderboard,
 } from "@/lib/types"
 import { getDb } from "@/lib/server/db"
 import {
@@ -398,6 +407,15 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
   }
 }
 
+/** Extrait le quartier depuis la chaîne location (ex: "Fann - Rue Aimé Césaire" → "Fann") */
+function extractQuartierFromLocation(location: string): string | undefined {
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  for (const q of QUARTIERS) {
+    if (location.includes(q)) return q
+  }
+  return undefined
+}
+
 export async function createIncident(input: {
   reporterUserId?: number
   type: string
@@ -434,7 +452,14 @@ export async function createIncident(input: {
       input.eahFacilityId ?? null,
     )
 
-  return { id: Number(result.lastInsertRowid) }
+  const newId = Number(result.lastInsertRowid)
+
+  // Attribuer les points "premier signalement" si citoyen connecté
+  if (input.reporterUserId) {
+    await handleIncidentPointsOnCreate(input.reporterUserId, newId, extractQuartierFromLocation(input.location))
+  }
+
+  return { id: newId }
 }
 
 export async function getMapData(): Promise<MapData> {
@@ -1742,6 +1767,11 @@ export async function updateIncidentStatus(
     assignNow ? new Date().toISOString() : null,
     id,
   )
+
+  // Attribuer les points de résolution au citoyen reporter
+  if (status === "Résolu") {
+    await handleIncidentPointsOnResolve(id)
+  }
 }
 
 export async function getMyIncidents(
@@ -1776,10 +1806,7 @@ export async function getMyIncidents(
 // MODULE EAH — Eau, Assainissement, Hygiène
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type {
-  EahFacility, EahFacilityType, EahFacilityStatus,
-  EahZoneStat, EahDashboardData
-} from "@/lib/types"
+// EAH types imported at top
 
 function rowToFacility(r: Record<string, unknown>): EahFacility {
   return {
@@ -1901,5 +1928,357 @@ export async function updateEahFacilityStatus(
   } else {
     db.prepare("UPDATE eah_facilities SET status = ?, last_inspection = ?, updated_at = ? WHERE id = ?")
       .run(status, now, now, id)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SYSTÈME DE POINTS & BADGES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Points types imported at top
+
+/** Définition de tous les badges avec leurs seuils */
+export const BADGE_DEFINITIONS = [
+  {
+    code: "premier_pas"  as BadgeCode, label: "Premier Pas",   icon: "🌱",
+    description: "Premier signalement soumis",        color: "#22c55e",  threshold: 0,
+  },
+  {
+    code: "vigilant"     as BadgeCode, label: "Vigilant",       icon: "👁️",
+    description: "50 points accumulés",               color: "#3b82f6",  threshold: 50,
+  },
+  {
+    code: "expert"       as BadgeCode, label: "Expert",         icon: "🎯",
+    description: "150 points – signalements fiables", color: "#8b5cf6",  threshold: 150,
+  },
+  {
+    code: "champion"     as BadgeCode, label: "Champion",       icon: "🏆",
+    description: "300 points – pilier de la communauté", color: "#f59e0b", threshold: 300,
+  },
+  {
+    code: "sentinelle"   as BadgeCode, label: "Sentinelle",     icon: "🛡️",
+    description: "500 points – gardien du réseau",    color: "#06b6d4",  threshold: 500,
+  },
+  {
+    code: "ambassadeur"  as BadgeCode, label: "Ambassadeur",    icon: "🌟",
+    description: "1000 points – légende AquaPulse",   color: "#ec4899",  threshold: 1000,
+  },
+]
+
+/** Raison → libellé lisible + points associés */
+export const POINTS_REASONS: Record<string, { label: string; points: number }> = {
+  premier_signalement:   { label: "1er signalement 🌟",            points: 10 },
+  signalement_soumis:    { label: "Signalement soumis",            points: 5  },
+  signalement_confirme:  { label: "Signalement confirmé (IA)",     points: 10 },
+  signalement_valide_ia: { label: "Signalement validé (IA haute confiance)", points: 15 },
+  signalement_resolu:    { label: "Signalement résolu ✅",          points: 5  },
+  signalement_critique:  { label: "Alerte critique confirmée 🚨",  points: 20 },
+  badge_vigilant:        { label: "Badge Vigilant débloqué 🎉",    points: 20 },
+  badge_expert:          { label: "Badge Expert débloqué 🎉",      points: 30 },
+  badge_champion:        { label: "Badge Champion débloqué 🎉",    points: 50 },
+}
+
+/**
+ * Attribue des points à un citoyen pour un incident donné.
+ * Calcule et attribue automatiquement les nouveaux badges.
+ */
+export async function awardPoints(
+  userId: number,
+  reason: keyof typeof POINTS_REASONS,
+  incidentId?: number,
+  quartier?: string,
+): Promise<{ points: number; newBadges: BadgeCode[] }> {
+  const db = await getDb()
+  const def = POINTS_REASONS[reason]
+  if (!def) return { points: 0, newBadges: [] }
+
+  const now = new Date().toISOString()
+
+  // Insérer les points
+  db.prepare(
+    "INSERT INTO citizen_points (user_id, incident_id, points, reason, quartier, awarded_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(userId, incidentId ?? null, def.points, reason, quartier ?? null, now)
+
+  // Calculer le total (CAST pour éviter BigInt avec node:sqlite)
+  const row = db.prepare("SELECT CAST(COALESCE(SUM(points),0) AS INTEGER) as total FROM citizen_points WHERE user_id = ?").get(userId) as { total: number | bigint }
+  const total = Number(row.total)
+
+  // Vérifier les nouveaux badges à attribuer
+  const existingBadges = db.prepare("SELECT badge_code FROM citizen_badges WHERE user_id = ?").all(userId) as Array<{ badge_code: string }>
+  const existingCodes = new Set(existingBadges.map(b => b.badge_code))
+
+  const newBadges: BadgeCode[] = []
+  const insBadge = db.prepare("INSERT OR IGNORE INTO citizen_badges (user_id, badge_code, awarded_at) VALUES (?, ?, ?)")
+
+  for (const badge of BADGE_DEFINITIONS) {
+    if (badge.threshold === 0) continue  // premier_pas géré séparément
+    if (!existingCodes.has(badge.code) && total >= badge.threshold) {
+      insBadge.run(userId, badge.code, now)
+      newBadges.push(badge.code)
+      // Bonus points pour le badge
+      const bonusReason = `badge_${badge.code}` as keyof typeof POINTS_REASONS
+      if (POINTS_REASONS[bonusReason]) {
+        db.prepare(
+          "INSERT INTO citizen_points (user_id, points, reason, quartier, awarded_at) VALUES (?, ?, ?, ?, ?)"
+        ).run(userId, POINTS_REASONS[bonusReason].points, bonusReason, null, now)
+      }
+    }
+  }
+
+  return { points: def.points, newBadges }
+}
+
+/**
+ * Appelé à la création d'un incident.
+ * - 1er signalement de cet utilisateur → raison "premier_signalement" (+10 pts) + badge premier_pas
+ * - Tous les suivants → raison "signalement_soumis" (+5 pts)
+ */
+export async function handleIncidentPointsOnCreate(
+  userId: number,
+  incidentId: number,
+  quartier?: string,
+): Promise<void> {
+  const db = await getDb()
+  const now = new Date().toISOString()
+
+  // Déjà des points pour cet incident précis ? (évite doublons si appelé 2x)
+  const alreadyAwarded = db.prepare(
+    "SELECT id FROM citizen_points WHERE incident_id = ? AND user_id = ?"
+  ).get(incidentId, userId)
+  if (alreadyAwarded) return
+
+  const prev = db.prepare(
+    "SELECT COUNT(*) as c FROM citizen_points WHERE user_id = ? AND reason = 'premier_signalement'"
+  ).get(userId) as { c: number }
+
+  if (prev.c === 0) {
+    // Tout premier signalement
+    await awardPoints(userId, "premier_signalement", incidentId, quartier)
+    db.prepare("INSERT OR IGNORE INTO citizen_badges (user_id, badge_code, awarded_at) VALUES (?, ?, ?)")
+      .run(userId, "premier_pas", now)
+  } else {
+    // Signalements suivants : +5 pts à chaque soumission
+    await awardPoints(userId, "signalement_soumis", incidentId, quartier)
+  }
+}
+
+/**
+ * Appelé quand un opérateur passe un incident en "Résolu".
+ * Attribue les points de résolution au citoyen reporter.
+ */
+export async function handleIncidentPointsOnResolve(incidentId: number): Promise<void> {
+  const db = await getDb()
+  const row = db.prepare(
+    "SELECT reporter_user_id, location FROM incidents WHERE id = ?"
+  ).get(incidentId) as { reporter_user_id: number | null; location: string } | undefined
+
+  if (!row || !row.reporter_user_id) return
+
+  const quartier = extractQuartierFromLocation(row.location)
+  await awardPoints(row.reporter_user_id, "signalement_resolu", incidentId, quartier)
+}
+
+
+
+/**
+ * Appelé par l'IA lors de la corrélation d'un signalement citoyen avec une alerte réseau.
+ * ia_confidence : 0-100
+ */
+export async function handleIncidentPointsFromAI(
+  incidentId: number,
+  iaConfidence: number,
+  isCritical: boolean,
+): Promise<void> {
+  const db = await getDb()
+  const row = db.prepare(
+    "SELECT reporter_user_id, location FROM incidents WHERE id = ?"
+  ).get(incidentId) as { reporter_user_id: number | null; location: string } | undefined
+
+  if (!row || !row.reporter_user_id) return
+
+  const quartier = extractQuartierFromLocation(row.location)
+
+  // Déjà récompensé par l'IA pour cet incident ?
+  const alreadyRewarded = db.prepare(
+    "SELECT id FROM citizen_points WHERE incident_id = ? AND reason IN ('signalement_confirme','signalement_valide_ia','signalement_critique')"
+  ).get(incidentId)
+  if (alreadyRewarded) return
+
+  if (isCritical && iaConfidence >= 70) {
+    await awardPoints(row.reporter_user_id, "signalement_critique", incidentId, quartier)
+  } else if (iaConfidence >= 75) {
+    await awardPoints(row.reporter_user_id, "signalement_valide_ia", incidentId, quartier)
+  } else if (iaConfidence >= 50) {
+    await awardPoints(row.reporter_user_id, "signalement_confirme", incidentId, quartier)
+  }
+}
+
+/** Récupère le profil complet de points d'un citoyen */
+export async function getCitizenPointsProfile(userId: number): Promise<CitizenPointsProfile> {
+  const db = await getDb()
+
+  // Note: node:sqlite retourne SUM/COUNT comme BigInt → on caste avec Number()
+  const totalRow = db.prepare(
+    "SELECT CAST(COALESCE(SUM(points),0) AS INTEGER) as total FROM citizen_points WHERE user_id = ?"
+  ).get(userId) as { total: number | bigint }
+  const totalPoints = Number(totalRow.total)
+
+  const badges = db.prepare(
+    "SELECT badge_code as badgeCode, awarded_at as awardedAt FROM citizen_badges WHERE user_id = ? ORDER BY awarded_at ASC"
+  ).all(userId) as Array<{ badgeCode: string; awardedAt: string }>
+
+  const historyRaw = db.prepare(
+    "SELECT id, points, reason, quartier, awarded_at as awardedAt FROM citizen_points WHERE user_id = ? ORDER BY awarded_at DESC LIMIT 30"
+  ).all(userId) as Array<{ id: number | bigint; points: number | bigint; reason: string; quartier: string | null; awardedAt: string }>
+
+  const history = historyRaw.map(r => ({
+    id: Number(r.id),
+    points: Number(r.points),
+    reason: r.reason,
+    quartier: r.quartier,
+    awardedAt: r.awardedAt,
+  }))
+
+  const quartierRaw = db.prepare(`
+    SELECT quartier, CAST(SUM(points) AS INTEGER) as points
+    FROM citizen_points WHERE user_id = ? AND quartier IS NOT NULL
+    GROUP BY quartier ORDER BY points DESC
+  `).all(userId) as Array<{ quartier: string; points: number | bigint }>
+
+  const quartierStats = quartierRaw.map(r => ({
+    quartier: r.quartier,
+    points: Number(r.points),
+  }))
+
+  // Rang global — requête simple sans sous-requête pour éviter les BigInt imbriqués
+  const allTotals = db.prepare(
+    "SELECT user_id, CAST(SUM(points) AS INTEGER) as total FROM citizen_points GROUP BY user_id"
+  ).all() as Array<{ user_id: number | bigint; total: number | bigint }>
+
+  const rank = allTotals.filter(r => Number(r.user_id) !== userId && Number(r.total) > totalPoints).length + 1
+
+  const totalCitRow = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'citoyen'").get() as { c: number | bigint }
+
+  return {
+    totalPoints,
+    rank,
+    totalCitizens: Number(totalCitRow.c),
+    badges: badges as any,
+    history,
+    quartierStats,
+  }
+}
+
+/** Classement global + par quartier pour l'opérateur */
+export async function getGlobalLeaderboard(): Promise<GlobalLeaderboard> {
+  const db = await getDb()
+
+  const citizensRaw = db.prepare(`
+    SELECT
+      u.id as userId,
+      u.name,
+      CAST(COALESCE(SUM(cp.points), 0) AS INTEGER) as totalPoints,
+      CAST(COUNT(DISTINCT i.id) AS INTEGER) as signalements,
+      CAST(COUNT(DISTINCT CASE WHEN cp2.reason IN ('signalement_confirme','signalement_valide_ia','signalement_critique') THEN cp2.incident_id END) AS INTEGER) as confirmes
+    FROM users u
+    LEFT JOIN citizen_points cp ON cp.user_id = u.id
+    LEFT JOIN incidents i ON i.reporter_user_id = u.id
+    LEFT JOIN citizen_points cp2 ON cp2.user_id = u.id
+    WHERE u.role = 'citoyen'
+    GROUP BY u.id, u.name
+    ORDER BY totalPoints DESC
+    LIMIT 50
+  `).all() as Array<{ userId: number | bigint; name: string; totalPoints: number | bigint; signalements: number | bigint; confirmes: number | bigint }>
+  const citizens = citizensRaw.map(c => ({
+    userId: Number(c.userId),
+    name: c.name,
+    totalPoints: Number(c.totalPoints),
+    signalements: Number(c.signalements),
+    confirmes: Number(c.confirmes),
+  }))
+
+  // Badges pour chaque citoyen
+  const allBadges = db.prepare(
+    "SELECT user_id, badge_code FROM citizen_badges"
+  ).all() as Array<{ user_id: number; badge_code: string }>
+  const badgeMap = new Map<number, BadgeCode[]>()
+  for (const b of allBadges) {
+    const arr = badgeMap.get(b.user_id) ?? []
+    arr.push(b.badge_code as BadgeCode)
+    badgeMap.set(b.user_id, arr)
+  }
+
+  // Quartier principal par citoyen
+  const quartierMap = new Map<number, string>()
+  const qRows = db.prepare(`
+    SELECT user_id, quartier, SUM(points) as pts FROM citizen_points
+    WHERE quartier IS NOT NULL GROUP BY user_id, quartier
+  `).all() as Array<{ user_id: number; quartier: string; pts: number }>
+  const qByUser = new Map<number, Array<{ quartier: string; pts: number }>>()
+  for (const r of qRows) {
+    const arr = qByUser.get(r.user_id) ?? []
+    arr.push({ quartier: r.quartier, pts: r.pts })
+    qByUser.set(r.user_id, arr)
+  }
+  for (const [uid, arr] of qByUser) {
+    arr.sort((a, b) => b.pts - a.pts)
+    quartierMap.set(uid, arr[0].quartier)
+  }
+
+  const citizensList = citizens.map((c, idx) => ({
+    rank: idx + 1,
+    userId: c.userId,
+    name: c.name,
+    totalPoints: c.totalPoints,
+    badges: badgeMap.get(c.userId) ?? [],
+    quartierPrincipal: quartierMap.get(c.userId) ?? null,
+    signalements: c.signalements,
+    confirmes: c.confirmes,
+  }))
+
+  // Classements par quartier
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  const quartierLeaderboards: QuartierLeaderboard[] = []
+
+  for (const q of QUARTIERS) {
+    const top = db.prepare(`
+      SELECT u.id as userId, u.name, COALESCE(SUM(cp.points),0) as points
+      FROM users u
+      LEFT JOIN citizen_points cp ON cp.user_id = u.id AND cp.quartier = ?
+      WHERE u.role = 'citoyen'
+      GROUP BY u.id, u.name
+      HAVING points > 0
+      ORDER BY points DESC LIMIT 5
+    `).all(q) as Array<{ userId: number; name: string; points: number }>
+
+    const sigRow = db.prepare(`
+      SELECT COUNT(*) as total FROM incidents WHERE location LIKE ?
+    `).get(`%${q}%`) as { total: number }
+
+    const confRow = db.prepare(`
+      SELECT COUNT(DISTINCT cp.incident_id) as confirmes
+      FROM citizen_points cp
+      JOIN incidents i ON i.id = cp.incident_id
+      WHERE cp.quartier = ? AND cp.reason IN ('signalement_confirme','signalement_valide_ia','signalement_critique')
+    `).get(q) as { confirmes: number }
+
+    const total = sigRow.total
+    const confirmes = confRow.confirmes
+    quartierLeaderboards.push({
+      quartier: q,
+      topCitizens: top.map(t => ({
+        ...t,
+        badges: badgeMap.get(t.userId) ?? [],
+      })),
+      totalSignalements: total,
+      totalConfirmes: confirmes,
+      tauxConfirmation: total > 0 ? Math.round((confirmes / total) * 100) : 0,
+    })
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    citizens: citizensList,
+    quartierLeaderboards,
   }
 }

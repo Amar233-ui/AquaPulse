@@ -347,6 +347,33 @@ function applyMigrations(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_notification_reads_user_category ON notification_reads(user_id, category);
   `)
+
+  // ── Migration système de points ───────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS citizen_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      incident_id INTEGER,
+      points INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      quartier TEXT,
+      awarded_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_citizen_points_user ON citizen_points(user_id);
+    CREATE INDEX IF NOT EXISTS idx_citizen_points_quartier ON citizen_points(quartier);
+
+    CREATE TABLE IF NOT EXISTS citizen_badges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      badge_code TEXT NOT NULL,
+      awarded_at TEXT NOT NULL,
+      UNIQUE(user_id, badge_code),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_citizen_badges_user ON citizen_badges(user_id);
+  `)
 }
 
 function isoHoursAgo(hours: number): string {
@@ -1134,6 +1161,45 @@ function seedQuartierQuality(db: DatabaseSync) {
   }
 }
 
+
+function seedPoints(db: DatabaseSync) {
+  const count = db.prepare("SELECT COUNT(*) as c FROM citizen_points").get() as { c: number }
+  if (count.c > 0) return
+
+  const citizens = db.prepare("SELECT id FROM users WHERE role = 'citoyen'").all() as Array<{ id: number }>
+  if (citizens.length === 0) return
+
+  const citizen = citizens[0]
+  const now = new Date()
+
+  const demoPoints: Array<{ points: number; reason: string; quartier: string | null; daysAgo: number }> = [
+    { points: 10, reason: "premier_signalement",  quartier: "Médina",  daysAgo: 14 },
+    { points: 10, reason: "signalement_confirme", quartier: "Médina",  daysAgo: 13 },
+    { points: 5,  reason: "signalement_resolu",   quartier: "Plateau", daysAgo: 12 },
+    { points: 10, reason: "signalement_confirme", quartier: "Plateau", daysAgo: 10 },
+    { points: 10, reason: "signalement_confirme", quartier: "Fann",    daysAgo: 8  },
+    { points: 15, reason: "signalement_valide_ia",quartier: "Fann",    daysAgo: 7  },
+    { points: 10, reason: "signalement_confirme", quartier: "HLM",     daysAgo: 5  },
+    { points: 5,  reason: "signalement_resolu",   quartier: "HLM",     daysAgo: 4  },
+    { points: 20, reason: "badge_vigilant",        quartier: null,      daysAgo: 3  },
+    { points: 10, reason: "signalement_confirme", quartier: "Médina",  daysAgo: 1  },
+  ]
+
+  const ins = db.prepare(
+    "INSERT INTO citizen_points (user_id, points, reason, quartier, awarded_at) VALUES (?, ?, ?, ?, ?)"
+  )
+  for (const p of demoPoints) {
+    const d = new Date(now.getTime() - p.daysAgo * 86400000)
+    ins.run(citizen.id, p.points, p.reason, p.quartier, d.toISOString())
+  }
+
+  const insBadge = db.prepare(
+    "INSERT OR IGNORE INTO citizen_badges (user_id, badge_code, awarded_at) VALUES (?, ?, ?)"
+  )
+  insBadge.run(citizen.id, "premier_pas", isoDaysAgo(14))
+  insBadge.run(citizen.id, "vigilant",    isoDaysAgo(3))
+}
+
 async function seedDatabase(db: DatabaseSync) {
   await seedUsers(db)
   seedSectors(db)
@@ -1150,6 +1216,7 @@ async function seedDatabase(db: DatabaseSync) {
   seedSimulations(db)
   seedSettings(db)
   seedMonthlyActivity(db)
+  seedPoints(db)
 }
 
 async function initializeDatabase(db: DatabaseSync) {

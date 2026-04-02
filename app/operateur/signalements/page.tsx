@@ -17,7 +17,52 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useApiQuery } from "@/hooks/use-api-query"
 import { useMarkNotificationsViewed } from "@/hooks/use-mark-notifications-viewed"
-import type { OperatorIncident, IncidentSummary } from "@/lib/types"
+import type { OperatorIncident, IncidentSummary, BadgeCode } from "@/lib/types"
+
+// ── Badges citoyens (référence côté client) ────────────────────────────────────
+const BADGES_CLIENT: Record<BadgeCode, { icon: string; color: string; label: string }> = {
+  premier_pas: { icon: "🌱", color: "#22c55e", label: "Premier Pas"  },
+  vigilant:    { icon: "👁️",  color: "#3b82f6", label: "Vigilant"    },
+  expert:      { icon: "🎯",  color: "#8b5cf6", label: "Expert"      },
+  champion:    { icon: "🏆",  color: "#f59e0b", label: "Champion"    },
+  sentinelle:  { icon: "🛡️",  color: "#06b6d4", label: "Sentinelle" },
+  ambassadeur: { icon: "🌟",  color: "#ec4899", label: "Ambassadeur"},
+}
+
+// Cache local des profils points par userId (pour ne pas refetcher à chaque render)
+const pointsCache = new Map<number, { points: number; badges: BadgeCode[] }>()
+
+function useCitizenBadges(userId: number | null) {
+  const [data, setData] = useState<{ points: number; badges: BadgeCode[] } | null>(null)
+  useEffect(() => {
+    if (!userId) { setData(null); return }
+    if (pointsCache.has(userId)) { setData(pointsCache.get(userId)!); return }
+    // Appel API minimal – on réutilise le profil global classement
+    fetch(`/api/operateur/classement`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        for (const c of d.citizens ?? []) {
+          pointsCache.set(c.userId, { points: c.totalPoints, badges: c.badges })
+        }
+        setData(pointsCache.get(userId) ?? { points: 0, badges: [] })
+      })
+      .catch(() => {})
+  }, [userId])
+  return data
+}
+
+function CitizenBadgesPill({ userId }: { userId: number | null }) {
+  const data = useCitizenBadges(userId)
+  if (!userId || !data || data.badges.length === 0) return null
+  const top = data.badges.slice(-3)
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] rounded-full border border-teal-500/25 bg-teal-500/8 px-2 py-0.5">
+      <span className="text-teal-400 font-semibold">{data.points}pts</span>
+      {top.map(b => <span key={b} title={BADGES_CLIENT[b]?.label ?? b}>{BADGES_CLIENT[b]?.icon ?? "🏅"}</span>)}
+    </span>
+  )
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -481,7 +526,10 @@ export default function SignalementsPage() {
                         </div>
                           <p className="text-xs text-muted-foreground truncate">{inc.location}</p>
                           {inc.reporterName && (
-                            <p className="text-xs text-muted-foreground/60 truncate">Par : {inc.reporterName}</p>
+                            <p className="text-xs text-muted-foreground/60 truncate flex items-center gap-2">
+                              Par : {inc.reporterName}
+                              {inc.reporterUserId && <CitizenBadgesPill userId={inc.reporterUserId} />}
+                            </p>
                           )}
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground sm:hidden">
                             <span>{timeAgo(inc.createdAt)}</span>
@@ -593,9 +641,10 @@ export default function SignalementsPage() {
                       Signalé par
                     </p>
                     {selected.reporterName && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <User className="h-3.5 w-3.5 text-muted-foreground"/>
                         <span className="text-xs">{selected.reporterName}</span>
+                        {selected.reporterUserId && <CitizenBadgesPill userId={selected.reporterUserId} />}
                       </div>
                     )}
                     {selected.reporterEmail && (

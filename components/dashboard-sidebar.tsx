@@ -21,6 +21,8 @@ import {
   LogOut,
   MoreHorizontal,
   Waves,
+  Trophy,
+  Star,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AquaPulseLogo } from "@/components/aquapulse-logo"
@@ -36,10 +38,11 @@ interface NavItem {
 }
 
 const citizenNav: NavItem[] = [
-  { label: "Mon Eau",       href: "/citoyen",          icon: Droplets },
-  { label: "Carte",         href: "/citoyen/carte",    icon: Map },
-  { label: "EAH",           href: "/citoyen/eah",      icon: Waves },
-  { label: "Signaler",      href: "/citoyen/signaler", icon: MessageSquareWarning },
+  { label: "Mon Eau",        href: "/citoyen",          icon: Droplets },
+  { label: "Carte",          href: "/citoyen/carte",    icon: Map },
+  { label: "EAH",            href: "/citoyen/eah",      icon: Waves },
+  { label: "Signaler",       href: "/citoyen/signaler", icon: MessageSquareWarning },
+  { label: "Mes Points",     href: "/citoyen/points",   icon: Trophy },
 ]
 
 const operatorNav: NavItem[] = [
@@ -51,6 +54,7 @@ const operatorNav: NavItem[] = [
   { label: "Maintenance",    href: "/operateur/maintenance",    icon: Wrench },
   { label: "Capteurs",       href: "/operateur/capteurs",       icon: Radio },
   { label: "Simulateur",     href: "/operateur/simulateur",     icon: FlaskConical },
+  { label: "Classement",     href: "/operateur/classement",     icon: Trophy },
 ]
 
 const adminNav: NavItem[] = [

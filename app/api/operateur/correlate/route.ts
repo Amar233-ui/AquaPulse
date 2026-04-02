@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { authErrorResponse, requireUser } from "@/lib/server/session"
+import { handleIncidentPointsFromAI } from "@/lib/server/data-service"
 
 const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8001"
 const AI_TOKEN    = process.env.AI_SERVICE_TOKEN ?? "aquapulse-ai-dev-token"
@@ -85,6 +86,15 @@ export async function POST(request: Request) {
     }
 
     const data = (await res.json()) as CorrelateResponse
+
+    // Attribuer les points IA si corrélation trouvée
+    if (data.hasCorrelation && data.correlations.length > 0 && body.id) {
+      const bestCorr = data.correlations[0]
+      const isCritical = bestCorr.severity === "critique"
+      // Ne pas attendre pour ne pas bloquer la réponse
+      handleIncidentPointsFromAI(body.id, bestCorr.confidence, isCritical).catch(() => {})
+    }
+
     return NextResponse.json(data)
 
   } catch (error) {

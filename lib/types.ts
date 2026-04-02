@@ -349,3 +349,72 @@ export interface EahDashboardData {
   zone_stats: EahZoneStat[]
   recent_reports: EahFacility[]
 }
+
+// ── Système de Points & Badges ────────────────────────────────────────────────
+
+export type BadgeCode =
+  | "premier_pas"
+  | "vigilant"
+  | "expert"
+  | "champion"
+  | "sentinelle"
+  | "ambassadeur"
+
+export interface BadgeDefinition {
+  code: BadgeCode
+  label: string
+  description: string
+  icon: string
+  color: string
+  threshold: number   // points nécessaires (sauf badges spéciaux)
+}
+
+export interface CitizenPointsEntry {
+  id: number
+  points: number
+  reason: string
+  quartier: string | null
+  awardedAt: string
+}
+
+export interface CitizenBadge {
+  badgeCode: BadgeCode
+  awardedAt: string
+}
+
+export interface CitizenPointsProfile {
+  totalPoints: number
+  rank: number            // rang global
+  totalCitizens: number   // nb total citoyens
+  badges: CitizenBadge[]
+  history: CitizenPointsEntry[]
+  quartierStats: Array<{ quartier: string; points: number }>
+}
+
+export interface QuartierLeaderboard {
+  quartier: string
+  topCitizens: Array<{
+    userId: number
+    name: string
+    points: number
+    badges: BadgeCode[]
+  }>
+  totalSignalements: number
+  totalConfirmes: number
+  tauxConfirmation: number
+}
+
+export interface GlobalLeaderboard {
+  updatedAt: string
+  citizens: Array<{
+    rank: number
+    userId: number
+    name: string
+    totalPoints: number
+    badges: BadgeCode[]
+    quartierPrincipal: string | null
+    signalements: number
+    confirmes: number
+  }>
+  quartierLeaderboards: QuartierLeaderboard[]
+}
