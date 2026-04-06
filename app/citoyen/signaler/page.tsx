@@ -22,7 +22,7 @@ const QUARTIERS = [
   "Parcelles Assainies",
   "Pikine",
   "Guédiawaye",
-  "Rufisque",
+  "Pikine",
 ]
 
 type EahFacilityOption = {

@@ -693,7 +693,7 @@ function seedEahFacilities(db: DatabaseSync) {
     ["Borne Fontaine Parcelles U17", "borne_fontaine", "Parcelles Assainies", "Unité 17, place publique", "operationnel", 1, 1, 0, isoDaysAgo(5), null, now, now],
     ["Latrine Publique Guédiawaye Plage", "latrine_publique", "Guédiawaye", "Front de mer Guédiawaye", "degradé", 1, 0, 0, isoDaysAgo(14), "Nettoyage insuffisant et éclairage hors service.", now, now],
     ["Point Eau Gratuit Plateau Gare", "point_eau_gratuit", "Plateau", "Esplanade gare routière", "operationnel", 1, 1, 0, isoDaysAgo(6), null, now, now],
-    ["Bloc Hygiène Rufisque Centre", "bloc_hygiene", "Rufisque", "Marché Rufisque Centre", "operationnel", 1, 0, 0, isoDaysAgo(3), null, now, now],
+    ["Bloc Hygiène Pikine Centre", "bloc_hygiene", "Pikine", "Marché Pikine Centre", "operationnel", 1, 0, 0, isoDaysAgo(3), null, now, now],
     ["Station Lavage Mains École Grand Dakar", "station_lavage_mains", "Grand Dakar", "École Grand Dakar 2", "degradé", 1, 1, 1, isoDaysAgo(11), "Débit faible et réapprovisionnement savon à faire.", now, now],
     ["Borne Fontaine Médina Santhiaba", "borne_fontaine", "Médina", "Quartier Santhiaba", "operationnel", 1, 0, 0, isoDaysAgo(7), null, now, now],
     ["Latrine Publique Parcelles Unité 8", "latrine_publique", "Parcelles Assainies", "Terminus Unité 8", "degradé", 1, 0, 0, isoDaysAgo(19), "Porte endommagée et chasse irrégulière.", now, now],
@@ -1155,7 +1155,7 @@ function seedQuartierQuality(db: DatabaseSync) {
     ["Parcelles Assainies", 7.2, 0.9, 0.45, 27.3, 0, 1],
     ["Pikine",              7.0, 2.6, 0.15, 28.8, 3, 0],
     ["Guédiawaye",          6.8, 3.0, 0.12, 29.1, 4, 0],
-    ["Rufisque",            7.1, 1.1, 0.38, 27.6, 0, 1],
+    ["Pikine",            7.1, 1.1, 0.38, 27.6, 0, 1],
   ] as const
 
   for (const [quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe] of data) {

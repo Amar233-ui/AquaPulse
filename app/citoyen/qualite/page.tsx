@@ -12,7 +12,7 @@ import { MapPin, ChevronDown } from "lucide-react"
 
 const QUARTIERS = [
   "Plateau", "Médina", "Fann", "HLM",
-  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye", "Rufisque",
+  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye", "Pikine",
 ]
 
 const STORAGE_KEY = "aqp_citoyen_quartier"

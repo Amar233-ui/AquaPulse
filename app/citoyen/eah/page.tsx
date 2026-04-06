@@ -17,7 +17,7 @@ import {
 
 const QUARTIERS = [
   "Tous", "Plateau", "Médina", "Fann", "HLM",
-  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye", "Rufisque",
+  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye", "Pikine",
 ]
 
 const TYPE_LABELS: Record<string, { label: string; icon: string }> = {

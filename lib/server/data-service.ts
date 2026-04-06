@@ -409,7 +409,7 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
 
 /** Extrait le quartier depuis la chaîne location (ex: "Fann - Rue Aimé Césaire" → "Fann") */
 function extractQuartierFromLocation(location: string): string | undefined {
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
   for (const q of QUARTIERS) {
     if (location.includes(q)) return q
   }
@@ -1903,7 +1903,7 @@ export async function getEahDashboardData(): Promise<EahDashboardData> {
     schools_covered: all.filter(f => f.school_nearby).length,
   }
 
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
   const zone_stats: EahZoneStat[] = QUARTIERS.map(q => {
     const qf = all.filter(f => f.quartier === q)
     const total = qf.length
@@ -2245,7 +2245,7 @@ export async function getGlobalLeaderboard(): Promise<GlobalLeaderboard> {
   }))
 
   // Classements par quartier
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Rufisque"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
   const quartierLeaderboards: QuartierLeaderboard[] = []
 
   for (const q of QUARTIERS) {
