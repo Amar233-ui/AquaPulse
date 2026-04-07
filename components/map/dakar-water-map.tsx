@@ -88,7 +88,7 @@ type RenderedEah = {
   priorityLabel: string
 }
 
-const ZONES = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
+const ZONES = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
 
 function normalizeText(value: string) {
   return value

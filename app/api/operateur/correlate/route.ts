@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { authErrorResponse, requireUser } from "@/lib/server/session"
 import { handleIncidentPointsFromAI } from "@/lib/server/data-service"
 
-const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8001"
+const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8000"
 const AI_TOKEN    = process.env.AI_SERVICE_TOKEN ?? "aquapulse-ai-dev-token"
 
 export interface Correlation {
@@ -64,25 +64,45 @@ export async function POST(request: Request) {
       } satisfies CorrelateResponse)
     }
 
-    // Appel au service IA Python
-    const res = await fetch(`${AI_BASE_URL}/correlate`, {
-      method:  "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${AI_TOKEN}`,
-      },
-      body:   JSON.stringify(body),
-      signal: AbortSignal.timeout(4000),
-    })
+    // Appel au service IA Python (avec fallback local DB)
+    const localFallback = async () => {
+      const { correlateIncidentLocal } = await import("@/lib/server/ai-local")
+      const data = await correlateIncidentLocal({
+        id: body.id,
+        type: body.type,
+        location: body.location,
+        description: body.description,
+        createdAt: body.createdAt,
+      })
 
-    if (!res.ok) {
+      // Attribuer les points IA si corrélation trouvée (fallback local inclus)
+      if (data.hasCorrelation && data.correlations.length > 0 && body.id) {
+        const bestCorr = data.correlations[0]
+        const isCritical = bestCorr.severity === "critique"
+        handleIncidentPointsFromAI(body.id, bestCorr.confidence, isCritical).catch(() => {})
+      }
+
+      return { ...data, mode: "network" } satisfies CorrelateResponse
+    }
+
+    let res: Response | null = null
+    try {
+      res = await fetch(`${AI_BASE_URL}/correlate`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${AI_TOKEN}`,
+        },
+        body:   JSON.stringify(body),
+        signal: AbortSignal.timeout(4000),
+      })
+    } catch {
+      res = null
+    }
+
+    if (!res || !res.ok) {
       // Service IA down → retourner pas de corrélation (pas d'erreur visible)
-      return NextResponse.json({
-        incidentId:     body.id,
-        correlations:   [],
-        hasCorrelation: false,
-        analyzed:       0,
-      } satisfies CorrelateResponse)
+      return NextResponse.json(await localFallback())
     }
 
     const data = (await res.json()) as CorrelateResponse

@@ -409,7 +409,7 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
 
 /** Extrait le quartier depuis la chaîne location (ex: "Fann - Rue Aimé Césaire" → "Fann") */
 function extractQuartierFromLocation(location: string): string | undefined {
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
   for (const q of QUARTIERS) {
     if (location.includes(q)) return q
   }
@@ -417,14 +417,14 @@ function extractQuartierFromLocation(location: string): string | undefined {
 }
 
 export async function createIncident(input: {
-  reporterUserId?: number
+  reporterUserId?: number | null
   type: string
   location: string
   description: string
   reporterName?: string
   reporterEmail?: string
   eahFacilityId?: number | null
-}): Promise<{ id: number }> {
+}): Promise<{ id: number; points: null | { reason: keyof typeof POINTS_REASONS; points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] } }> {
   const db = await getDb()
 
   const result = db
@@ -455,15 +455,16 @@ export async function createIncident(input: {
   const newId = Number(result.lastInsertRowid)
 
   // Attribuer les points — dans un try/catch pour ne pas bloquer le signalement
+  let points: null | { reason: keyof typeof POINTS_REASONS; points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] } = null
   if (input.reporterUserId) {
     try {
-      await handleIncidentPointsOnCreate(input.reporterUserId, newId, extractQuartierFromLocation(input.location))
+      points = await handleIncidentPointsOnCreate(input.reporterUserId, newId, extractQuartierFromLocation(input.location))
     } catch (e) {
       console.error("[Points] Erreur attribution points création:", e)
     }
   }
 
-  return { id: newId }
+  return { id: newId, points }
 }
 
 export async function getMapData(): Promise<MapData> {
@@ -1903,7 +1904,7 @@ export async function getEahDashboardData(): Promise<EahDashboardData> {
     schools_covered: all.filter(f => f.school_nearby).length,
   }
 
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
   const zone_stats: EahZoneStat[] = QUARTIERS.map(q => {
     const qf = all.filter(f => f.quartier === q)
     const total = qf.length
@@ -1995,10 +1996,10 @@ export async function awardPoints(
   reason: keyof typeof POINTS_REASONS,
   incidentId?: number,
   quartier?: string,
-): Promise<{ points: number; newBadges: BadgeCode[] }> {
+): Promise<{ points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] }> {
   const db = await getDb()
   const def = POINTS_REASONS[reason]
-  if (!def) return { points: 0, newBadges: [] }
+  if (!def) return { points: 0, bonusPoints: 0, totalPointsAwarded: 0, newBadges: [] }
 
   const now = new Date().toISOString()
 
@@ -2016,6 +2017,7 @@ export async function awardPoints(
   const existingCodes = new Set(existingBadges.map(b => b.badge_code))
 
   const newBadges: BadgeCode[] = []
+  let bonusPoints = 0
   const insBadge = db.prepare("INSERT OR IGNORE INTO citizen_badges (user_id, badge_code, awarded_at) VALUES (?, ?, ?)")
 
   for (const badge of BADGE_DEFINITIONS) {
@@ -2026,6 +2028,7 @@ export async function awardPoints(
       // Bonus points pour le badge
       const bonusReason = `badge_${badge.code}` as keyof typeof POINTS_REASONS
       if (POINTS_REASONS[bonusReason]) {
+        bonusPoints += POINTS_REASONS[bonusReason].points
         db.prepare(
           "INSERT INTO citizen_points (user_id, points, reason, quartier, awarded_at) VALUES (?, ?, ?, ?, ?)"
         ).run(userId, POINTS_REASONS[bonusReason].points, bonusReason, null, now)
@@ -2033,7 +2036,12 @@ export async function awardPoints(
     }
   }
 
-  return { points: def.points, newBadges }
+  return {
+    points: def.points,
+    bonusPoints,
+    totalPointsAwarded: def.points + bonusPoints,
+    newBadges,
+  }
 }
 
 /**
@@ -2045,7 +2053,7 @@ export async function handleIncidentPointsOnCreate(
   userId: number,
   incidentId: number,
   quartier?: string,
-): Promise<void> {
+): Promise<null | { reason: keyof typeof POINTS_REASONS; points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] }> {
   const db = await getDb()
   const now = new Date().toISOString()
 
@@ -2053,7 +2061,7 @@ export async function handleIncidentPointsOnCreate(
   const alreadyAwarded = db.prepare(
     "SELECT id FROM citizen_points WHERE incident_id = ? AND user_id = ?"
   ).get(incidentId, userId)
-  if (alreadyAwarded) return
+  if (alreadyAwarded) return null
 
   const prev = db.prepare(
     "SELECT COUNT(*) as c FROM citizen_points WHERE user_id = ? AND reason = 'premier_signalement'"
@@ -2061,12 +2069,37 @@ export async function handleIncidentPointsOnCreate(
 
   if (prev.c === 0) {
     // Tout premier signalement
-    await awardPoints(userId, "premier_signalement", incidentId, quartier)
+    const awarded = await awardPoints(userId, "premier_signalement", incidentId, quartier)
+
+    const hadPremierPas = db.prepare(
+      "SELECT 1 as v FROM citizen_badges WHERE user_id = ? AND badge_code = 'premier_pas' LIMIT 1"
+    ).get(userId) as { v: number } | undefined
+
     db.prepare("INSERT OR IGNORE INTO citizen_badges (user_id, badge_code, awarded_at) VALUES (?, ?, ?)")
       .run(userId, "premier_pas", now)
+
+    const newBadges = [...awarded.newBadges]
+    if (!hadPremierPas) {
+      newBadges.unshift("premier_pas")
+    }
+
+    return {
+      reason: "premier_signalement",
+      points: awarded.points,
+      bonusPoints: awarded.bonusPoints,
+      totalPointsAwarded: awarded.totalPointsAwarded,
+      newBadges,
+    }
   } else {
     // Signalements suivants : +5 pts à chaque soumission
-    await awardPoints(userId, "signalement_soumis", incidentId, quartier)
+    const awarded = await awardPoints(userId, "signalement_soumis", incidentId, quartier)
+    return {
+      reason: "signalement_soumis",
+      points: awarded.points,
+      bonusPoints: awarded.bonusPoints,
+      totalPointsAwarded: awarded.totalPointsAwarded,
+      newBadges: awarded.newBadges,
+    }
   }
 }
 
@@ -2081,6 +2114,12 @@ export async function handleIncidentPointsOnResolve(incidentId: number): Promise
   ).get(incidentId) as { reporter_user_id: number | null; location: string } | undefined
 
   if (!row || !row.reporter_user_id) return
+
+  // Eviter doublons si un incident est re-ouvert puis re-resolu
+  const already = db.prepare(
+    "SELECT id FROM citizen_points WHERE incident_id = ? AND reason = 'signalement_resolu' LIMIT 1"
+  ).get(incidentId)
+  if (already) return
 
   const quartier = extractQuartierFromLocation(row.location)
   await awardPoints(row.reporter_user_id, "signalement_resolu", incidentId, quartier)
@@ -2245,7 +2284,7 @@ export async function getGlobalLeaderboard(): Promise<GlobalLeaderboard> {
   }))
 
   // Classements par quartier
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye","Pikine"]
+  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
   const quartierLeaderboards: QuartierLeaderboard[] = []
 
   for (const q of QUARTIERS) {

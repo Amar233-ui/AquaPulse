@@ -18,7 +18,7 @@ import {
 
 const QUARTIERS = [
   "Plateau", "Médina", "Fann", "HLM",
-  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye", "Pikine",
+  "Grand Dakar", "Parcelles Assainies", "Pikine", "Guédiawaye",
 ]
 const STORAGE_KEY = "aqp_citoyen_quartier"
 

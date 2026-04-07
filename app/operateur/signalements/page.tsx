@@ -159,7 +159,6 @@ function inferQuartier(location: string): string | null {
     "Parcelles Assainies",
     "Pikine",
     "Guédiawaye",
-    "Pikine",
   ]
 
   const normalized = location.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()

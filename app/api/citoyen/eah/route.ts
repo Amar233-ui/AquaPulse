@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { getEahFacilities, getEahDashboardData } from "@/lib/server/data-service"
-import { authErrorResponse, requireUser } from "@/lib/server/session"
+import { authErrorResponse } from "@/lib/server/session"
 
 export async function GET(request: Request) {
   try {
-    await requireUser(request, ["citoyen", "operateur", "admin"])
     const { searchParams } = new URL(request.url)
     const mode = searchParams.get("mode")
 

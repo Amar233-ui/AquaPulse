@@ -1152,11 +1152,10 @@ function seedQuartierQuality(db: DatabaseSync) {
     ["Fann",                7.3, 0.6, 0.50, 26.9, 0, 1],
     ["HLM",                 7.0, 1.8, 0.22, 28.2, 1, 0],
     ["Grand Dakar",         6.9, 2.1, 0.18, 28.5, 2, 0],
-    ["Parcelles Assainies", 7.2, 0.9, 0.45, 27.3, 0, 1],
-    ["Pikine",              7.0, 2.6, 0.15, 28.8, 3, 0],
-    ["Guédiawaye",          6.8, 3.0, 0.12, 29.1, 4, 0],
-    ["Pikine",            7.1, 1.1, 0.38, 27.6, 0, 1],
-  ] as const
+	    ["Parcelles Assainies", 7.2, 0.9, 0.45, 27.3, 0, 1],
+	    ["Pikine",              7.0, 2.6, 0.15, 28.8, 3, 0],
+	    ["Guédiawaye",          6.8, 3.0, 0.12, 29.1, 4, 0],
+	  ] as const
 
   for (const [quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe] of data) {
     insert.run(quartier, ph, turbidity, chlorine, temperature, coliforms, is_safe, now)
@@ -1218,7 +1217,9 @@ async function seedDatabase(db: DatabaseSync) {
   seedSimulations(db)
   seedSettings(db)
   seedMonthlyActivity(db)
-  seedPoints(db)
+  if (process.env.AQUAPULSE_SEED_POINTS === "true" || process.env.NODE_ENV !== "production") {
+    seedPoints(db)
+  }
 }
 
 async function initializeDatabase(db: DatabaseSync) {

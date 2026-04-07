@@ -9,7 +9,7 @@
  *   const anomalies = await aiClient.getAnomalies()
  */
 
-const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8001"
+const AI_BASE_URL = process.env.AI_SERVICE_URL ?? "http://127.0.0.1:8000"
 const AI_TOKEN    = process.env.AI_SERVICE_TOKEN ?? "aquapulse-ai-dev-token"
 
 const AI_ENABLED = process.env.AI_ENABLED !== "false"   // true par défaut
@@ -118,20 +118,31 @@ export const aiClient = {
       })
       return res.ok
     } catch {
-      return false
+      // Même si le microservice Python est down, on a un fallback local (DB).
+      return AI_ENABLED
     }
   },
 
   async getAnomalies(): Promise<{ data: AIAnomaliesResponse; fromAI: boolean }> {
-    return fetchAI<AIAnomaliesResponse>(
+    const remote = await fetchAI<AIAnomaliesResponse>(
       "/anomalies",
       {},
       { alerts: [], summary: { total:0, critique:0, alerte:0, moyen:0, faible:0 }, generated_at: "", model_version: "" }
     )
+
+    if (remote.fromAI) return remote
+
+    try {
+      const { getLocalAnomalies } = await import("./ai-local")
+      const local = await getLocalAnomalies()
+      return { data: local, fromAI: AI_ENABLED }
+    } catch {
+      return remote
+    }
   },
 
   async getKPIs(): Promise<{ data: AIKPIs; fromAI: boolean }> {
-    return fetchAI<AIKPIs>(
+    const remote = await fetchAI<AIKPIs>(
       "/dashboard/kpis",
       {},
       {
@@ -140,18 +151,38 @@ export const aiClient = {
         qualityScore: 0, qualityTrend: "stable",
       }
     )
+
+    if (remote.fromAI) return remote
+
+    try {
+      const { getLocalKPIs } = await import("./ai-local")
+      const local = await getLocalKPIs()
+      return { data: local, fromAI: AI_ENABLED }
+    } catch {
+      return remote
+    }
   },
 
   async getMaintenance(): Promise<{ data: { assets: AIMaintenanceAsset[] }; fromAI: boolean }> {
-    return fetchAI<{ assets: AIMaintenanceAsset[] }>(
+    const remote = await fetchAI<{ assets: AIMaintenanceAsset[] }>(
       "/predict/maintenance",
       {},
       { assets: [] }
     )
+
+    if (remote.fromAI) return remote
+
+    try {
+      const { getLocalMaintenance } = await import("./ai-local")
+      const local = await getLocalMaintenance()
+      return { data: local, fromAI: AI_ENABLED }
+    } catch {
+      return remote
+    }
   },
 
   async getQuality(): Promise<{ data: AIQuality; fromAI: boolean }> {
-    return fetchAI<AIQuality>(
+    const remote = await fetchAI<AIQuality>(
       "/predict/quality",
       {},
       {
@@ -162,6 +193,16 @@ export const aiClient = {
         alerts: [],
       }
     )
+
+    if (remote.fromAI) return remote
+
+    try {
+      const { getLocalQuality } = await import("./ai-local")
+      const local = await getLocalQuality()
+      return { data: local, fromAI: AI_ENABLED }
+    } catch {
+      return remote
+    }
   },
 
   async getLeaks(): Promise<{ data: { segments: Array<{ zone: string; risk_score: number; risk: string }> }; fromAI: boolean }> {

@@ -22,7 +22,6 @@ const QUARTIERS = [
   "Parcelles Assainies",
   "Pikine",
   "Guédiawaye",
-  "Pikine",
 ]
 
 type EahFacilityOption = {
@@ -32,6 +31,35 @@ type EahFacilityOption = {
   status: "operationnel" | "degradé" | "hors_service"
   community_signal_count?: number
   community_confirmation?: "none" | "to_verify" | "probable" | "confirmed"
+}
+
+type CreateIncidentPoints =
+  | {
+      reason: string
+      points: number
+      bonusPoints: number
+      totalPointsAwarded: number
+      newBadges: string[]
+    }
+  | null
+
+type CreateIncidentAi =
+  | {
+      awarded: number
+      reason: string
+      confidence: number
+      matchedAlertId: string
+    }
+  | null
+
+type CreateIncidentResponse = {
+  ok?: boolean
+  incidentId?: number
+  points?: CreateIncidentPoints
+  ai?: CreateIncidentAi
+  authenticated?: boolean
+  error?: string
+  detail?: string
 }
 
 const REPORT_MODES = {
@@ -80,6 +108,11 @@ function SignalerPageInner() {
   const [photoPreview,  setPhotoPreview]  = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [incidentId,    setIncidentId]    = useState<number | null>(null)
+  const [submitMeta, setSubmitMeta] = useState<{
+    authenticated: boolean
+    points: CreateIncidentPoints
+    ai: CreateIncidentAi
+  } | null>(null)
   const [error,         setError]         = useState<string | null>(null)
   const [loading,       setLoading]       = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -106,8 +139,12 @@ function SignalerPageInner() {
     if (initialQuartier && QUARTIERS.includes(initialQuartier)) {
       setQuartier((current) => current || initialQuartier)
     }
-    if (searchParams.get("mode") === REPORT_MODES.eah || searchParams.get("eah")) {
+    const hasEah = Boolean(searchParams.get("eah"))
+    if (searchParams.get("mode") === REPORT_MODES.eah || hasEah) {
       setReportMode(REPORT_MODES.eah)
+      if (hasEah) {
+        setType((current) => current || "panne_eah")
+      }
     }
   }, [searchParams])
 
@@ -162,7 +199,7 @@ function SignalerPageInner() {
     setType(""); setQuartier(""); setAdresseDetail(""); setReportMode(REPORT_MODES.network)
     setDescription(""); setReporterName(""); setReporterEmail("")
     setSelectedEahId(""); setEahOptions([])
-    removePhoto(); setStatusMessage(null); setIncidentId(null); setError(null)
+    removePhoto(); setStatusMessage(null); setIncidentId(null); setSubmitMeta(null); setError(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -194,9 +231,14 @@ function SignalerPageInner() {
           eahFacilityId: selectedFacility?.id ?? null,
         }),
       })
-      const json = (await response.json()) as { error?: string; detail?: string; incidentId?: number }
+      const json = (await response.json()) as CreateIncidentResponse
       if (!response.ok) throw new Error((json.detail ?? json.error) ?? "Envoi impossible")
       setIncidentId(json.incidentId ?? null)
+      setSubmitMeta({
+        authenticated: Boolean(json.authenticated),
+        points: (json.points ?? null) as CreateIncidentPoints,
+        ai: (json.ai ?? null) as CreateIncidentAi,
+      })
       setStatusMessage("ok")
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Erreur inconnue")
@@ -243,22 +285,38 @@ function SignalerPageInner() {
             <div className="space-y-2 text-xs text-foreground/70">
               <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
                 <span className="flex items-center gap-2"><Star className="h-3.5 w-3.5 text-amber-400" />Points attribués</span>
-                <span className="font-bold text-amber-300">+10 pts</span>
+                {submitMeta?.authenticated ? (
+                  <span className="font-bold text-amber-300">+{submitMeta.points?.totalPointsAwarded ?? 0} pts</span>
+                ) : (
+                  <span className="font-bold text-amber-300">Connexion requise</span>
+                )}
               </div>
               <div className="flex items-center justify-between rounded-lg bg-teal-500/10 px-3 py-2">
                 <span className="flex items-center gap-2"><Zap className="h-3.5 w-3.5 text-teal-400" />Si confirmé par l&apos;IA</span>
-                <span className="font-bold text-teal-300">+10 à +20 pts</span>
+                {submitMeta?.authenticated && submitMeta.ai ? (
+                  <span className="font-bold text-teal-300">+{submitMeta.ai.awarded} pts ({submitMeta.ai.confidence}%)</span>
+                ) : (
+                  <span className="font-bold text-teal-300">+10 à +20 pts</span>
+                )}
               </div>
               <div className="flex items-center justify-between rounded-lg bg-blue-500/10 px-3 py-2">
                 <span className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-blue-400" />Si résolu par les équipes</span>
                 <span className="font-bold text-blue-300">+5 pts</span>
               </div>
             </div>
+            {submitMeta?.authenticated && submitMeta.points?.newBadges?.length ? (
+              <p className="text-[11px] text-foreground/70 text-center">
+                Nouveau(x) badge(s) : {submitMeta.points.newBadges.join(", ")}
+              </p>
+            ) : null}
             <p className="text-[11px] text-muted-foreground/60 text-center">
               Plus votre signalement est fiable, plus vous gagnez de points et montez dans le classement.
             </p>
-            <a href="/citoyen/points" className="flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors mt-1">
-              Voir mes points &amp; badges →
+            <a
+              href={submitMeta?.authenticated ? "/citoyen/points" : "/auth/login?next=/citoyen/points"}
+              className="flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors mt-1"
+            >
+              {submitMeta?.authenticated ? "Voir mes points & badges →" : "Se connecter pour voir mes points →"}
             </a>
           </div>
 

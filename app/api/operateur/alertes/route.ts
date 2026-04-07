@@ -38,7 +38,8 @@ export async function GET(request: Request) {
     }))
 
     // ── 4. Fusion : alertes IA en premier (plus fraîches), puis DB ────────
-    const allAlerts = [...aiAlerts, ...dbData.items]
+    const aiIds = new Set(aiAlerts.map((a) => a.id))
+    const allAlerts = [...aiAlerts, ...dbData.items.filter((a) => !aiIds.has(a.id))]
 
     // Appliquer les filtres si présents
     const filtered = allAlerts.filter(alert => {
