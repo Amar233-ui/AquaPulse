@@ -780,7 +780,7 @@ export function DakarCitizenMap() {
           <div style={{ color: "#e2e8f0", fontSize: 16, fontWeight: 700 }}>{dashboard.qualityScore}/100</div>
         </div>
         <div style={{ border: "1px solid rgba(34,211,238,.14)", borderRadius: 8, padding: "8px 10px", background: "#0f172a" }}>
-          <div style={{ color: "#64748b", fontSize: 9, letterSpacing: "0.12em", marginBottom: 2 }}>EAH</div>
+          <div style={{ color: "#64748b", fontSize: 9, letterSpacing: "0.12em", marginBottom: 2 }}>ASSAIN.</div>
           <div style={{ color: "#e2e8f0", fontSize: 16, fontWeight: 700 }}>{selectedZoneFacilities.length}</div>
         </div>
       </div>
@@ -863,7 +863,7 @@ export function DakarCitizenMap() {
       </div>
 
       <div>
-        <p style={{ color: "#22d3ee", fontSize: 9, fontWeight: 700, letterSpacing: "0.15em", marginBottom: 7 }}>EAH DU QUARTIER</p>
+        <p style={{ color: "#22d3ee", fontSize: 9, fontWeight: 700, letterSpacing: "0.15em", marginBottom: 7 }}>ASSAINISSEMENT DU QUARTIER</p>
         {selectedZoneFacilities.slice(0, 5).map((facility) => {
           const color = confirmationColor(facility.community_confirmation)
           return (
@@ -939,7 +939,7 @@ export function DakarCitizenMap() {
       return (
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: "#22d3ee", fontSize: 9, fontWeight: 700, letterSpacing: "0.15em" }}>SITE EAH</span>
+            <span style={{ color: "#22d3ee", fontSize: 9, fontWeight: 700, letterSpacing: "0.15em" }}>INSTALLATION</span>
             <button onClick={() => { setSelectedFacilityId(null); if (mob) setDrw(false) }} style={{ color: "#475569", background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✕</button>
           </div>
           <div style={{ background: `${color}0d`, border: `1px solid ${color}33`, borderRadius: 8, padding: "10px 12px" }}>
@@ -1004,7 +1004,7 @@ export function DakarCitizenMap() {
             <div style={{ color: "#f3f4f6", fontSize: 14, fontWeight: 700 }}>{selectedZoneAlerts.length}</div>
           </div>
           <div style={{ background: "#0f172a", border: "1px solid rgba(34,211,238,.12)", borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ color: "#cbd5e1", fontSize: 9, letterSpacing: "0.12em", marginBottom: 2 }}>EAH</div>
+            <div style={{ color: "#cbd5e1", fontSize: 9, letterSpacing: "0.12em", marginBottom: 2 }}>ASSAIN.</div>
             <div style={{ color: "#f3f4f6", fontSize: 14, fontWeight: 700 }}>{selectedZoneFacilities.length}</div>
           </div>
         </div>
@@ -1031,7 +1031,7 @@ export function DakarCitizenMap() {
             Signaler ici
           </a>
           <a href={`/citoyen/eah?quartier=${encodeURIComponent(quartier)}`} style={{ background: "#0f172a", color: "#e2e8f0", border: "1px solid rgba(34,211,238,.18)", borderRadius: 8, padding: "9px 12px", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            Voir l'EAH
+            Voir l'assainissement
           </a>
         </div>
       </div>

@@ -115,7 +115,7 @@ export default function OperateurDashboard() {
             )}
             {eahCritical > 0 && (
               <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs gap-1">
-                <Droplets className="h-3 w-3"/> {eahCritical} site{eahCritical > 1 ? "s" : ""} EAH à traiter
+                <Droplets className="h-3 w-3"/> {eahCritical} installation{eahCritical > 1 ? "s" : ""} d'assainissement à traiter
               </Badge>
             )}
             <Badge
@@ -303,7 +303,7 @@ export default function OperateurDashboard() {
                   : item.source === "maintenance"
                     ? "Maintenance"
                     : item.source === "eah"
-                      ? "EAH"
+                      ? "Assainissement"
                       : item.source === "hybrid"
                         ? "Hybride"
                         : "Historique"

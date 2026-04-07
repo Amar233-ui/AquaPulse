@@ -304,7 +304,7 @@ export default function MaintenancePage() {
                           )}
                           {task.linkedEah && (
                             <span className="flex items-center gap-0.5 text-[10px] text-cyan-400">
-                              <MapPin className="h-2.5 w-2.5" /> Site EAH
+                              <MapPin className="h-2.5 w-2.5" /> Installation d'assainissement
                             </span>
                           )}
                           {task.assignedOperatorName && (
@@ -472,9 +472,9 @@ export default function MaintenancePage() {
                     <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="h-3.5 w-3.5 text-cyan-400" />
-                        <p className="text-xs font-bold text-cyan-400">Site EAH lié</p>
+                        <p className="text-xs font-bold text-cyan-400">Installation liée</p>
                         <span className="ml-auto font-mono text-[10px] text-cyan-400/70">
-                          EAH-{selected.linkedEah.id}
+                          ASSAIN-{selected.linkedEah.id}
                         </span>
                       </div>
                       <p className="text-xs font-semibold text-foreground">{selected.linkedEah.name}</p>

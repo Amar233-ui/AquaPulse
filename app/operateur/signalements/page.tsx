@@ -514,7 +514,7 @@ export default function SignalementsPage() {
                           {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground"/>}
                           {inc.eahFacilityName && (
                             <span className="text-[10px] rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
-                              EAH · {inc.eahFacilityName}
+                              Assainissement · {inc.eahFacilityName}
                             </span>
                           )}
                           {inc.assignedOperatorName && (
@@ -625,10 +625,10 @@ export default function SignalementsPage() {
 
                 {selected.eahFacilityName && (
                   <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/5 p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Site EAH lié</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Installation liée</p>
                     <p className="mt-1 text-xs font-medium text-foreground">{selected.eahFacilityName}</p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      Ce signalement contribue à la confirmation communautaire de ce site EAH.
+                      Ce signalement contribue à la confirmation communautaire de cette installation.
                     </p>
                   </div>
                 )}
@@ -731,7 +731,7 @@ export default function SignalementsPage() {
                       <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5"/>
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
                         {corrResult.mode === "eah"
-                          ? (corrResult.message ?? "Signalement EAH: corrélation réseau non applicable.")
+                          ? (corrResult.message ?? "Signalement assainissement : corrélation réseau non applicable.")
                           : "Aucune alerte réseau correspondante."}
                         {corrResult.mode !== "eah" && corrResult.analyzed > 0 && ` (${corrResult.analyzed} alertes analysées)`}
                       </p>
@@ -749,7 +749,7 @@ export default function SignalementsPage() {
                   <div className="flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-cyan-400"/>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400/90">
-                      Contexte EAH
+                      Contexte assainissement
                     </p>
                     {eahLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto"/>}
                   </div>
@@ -760,7 +760,7 @@ export default function SignalementsPage() {
                       {eahContext.length > 0 ? (
                         <>
                           <p className="text-[10px] text-muted-foreground">
-                            {eahContext.length} site(s) EAH non opérationnel(s) dans la même zone
+                            {eahContext.length} installation(s) d'assainissement non opérationnelle(s) dans la même zone
                           </p>
                           <div className="space-y-2">
                             {eahContext.slice(0, 3).map((site) => (
@@ -776,7 +776,7 @@ export default function SignalementsPage() {
                         </>
                       ) : (
                         <p className="text-[10px] text-muted-foreground">
-                          Aucun site EAH critique trouvé dans ce quartier.
+                          Aucune installation d'assainissement critique trouvée dans ce quartier.
                         </p>
                       )}
                     </div>

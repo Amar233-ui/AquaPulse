@@ -349,7 +349,7 @@ export default function OperateurEahPage() {
   ]
 
   return (
-    <DashboardLayout role="operateur" title="Gestion EAH">
+    <DashboardLayout role="operateur" title="Gestion Assainissement">
 
       {selected && (
         <DetailPanel
@@ -363,7 +363,7 @@ export default function OperateurEahPage() {
 
         {/* ── KPIs ── */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wide">Vue d'ensemble EAH</h2>
+          <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wide">Vue d'ensemble assainissement</h2>
           <button onClick={handleRefresh} disabled={isRefreshing}
             className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-card/80 px-3 py-2 text-xs font-semibold text-foreground/70 hover:text-foreground hover:bg-secondary/50 transition-all disabled:opacity-50">
             <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
@@ -387,7 +387,7 @@ export default function OperateurEahPage() {
         )}
 
         <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
-          <p className="text-sm font-semibold text-cyan-200">EAH est maintenant intégré au workflow opérateur</p>
+          <p className="text-sm font-semibold text-cyan-200">L'assainissement est maintenant intégré au workflow opérateur</p>
           <p className="mt-1 text-xs text-foreground/65">
             Un site dégradé ou hors service peut maintenant générer un bon d&apos;intervention et suivre sa remise en service via la maintenance.
             {maintenanceBacklog > 0 ? ` ${maintenanceBacklog} site(s) demandent encore une action.` : " Aucun site n'attend d'action pour le moment."}
@@ -423,7 +423,7 @@ export default function OperateurEahPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground/40" />
                 <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher un site EAH…"
+                  placeholder="Rechercher une installation…"
                   className="w-full rounded-xl border border-border/50 bg-card/60 pl-9 pr-4 py-2.5 text-sm text-foreground placeholder:text-foreground/35 focus:outline-none focus:ring-2 focus:ring-blue-500/40" />
               </div>
               <div className="relative">
@@ -524,7 +524,7 @@ export default function OperateurEahPage() {
                       </div>
                       <div className="text-right">
                         <span className={cn("text-xl font-bold tabular-nums", textColor)}>{z.score}%</span>
-                        <p className="text-[10px] text-foreground/40">accès EAH</p>
+                        <p className="text-[10px] text-foreground/40">état</p>
                       </div>
                     </div>
                     <div className="h-1.5 rounded-full bg-secondary/60 overflow-hidden">
@@ -545,7 +545,7 @@ export default function OperateurEahPage() {
             ) : prioritaires.length === 0 ? (
               <div className="rounded-xl border border-teal-500/25 bg-teal-950/20 px-6 py-10 text-center">
                 <CheckCircle className="h-10 w-10 text-teal-400 mx-auto mb-3" />
-                <p className="font-semibold text-teal-300">Aucune urgence EAH</p>
+                <p className="font-semibold text-teal-300">Aucune urgence assainissement</p>
                 <p className="text-sm text-foreground/60 mt-1">Tous les sites critiques sont opérationnels</p>
               </div>
             ) : (

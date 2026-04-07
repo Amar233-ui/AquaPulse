@@ -360,7 +360,7 @@ export function DakarWaterMap() {
       <p style={{color:"#22d3ee",fontSize:10,fontWeight:700,letterSpacing:"0.15em",margin:0}}>AQUAPULSE — OPÉRATEUR</p>
       <div>
         <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:7}}>RÉSEAU</p>
-        {[{l:"Conduites",v:`${PIPES.length}`},{l:"Nœuds",v:`${NODES.length}`},{l:"Capteurs débit",v:`${td}`},{l:"Sites EAH",v:`${renderedEah.length}`},{l:"Synchro",v:clock}].map(x=>(
+        {[{l:"Conduites",v:`${PIPES.length}`},{l:"Nœuds",v:`${NODES.length}`},{l:"Capteurs débit",v:`${td}`},{l:"Assainissement",v:`${renderedEah.length}`},{l:"Synchro",v:clock}].map(x=>(
           <div key={x.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid rgba(34,211,238,.08)"}}>
             <span style={{color:"#64748b",fontSize:11}}>{x.l}</span><span style={{color:"#e2e8f0",fontSize:11,fontWeight:600}}>{x.v}</span>
           </div>
@@ -390,7 +390,7 @@ export function DakarWaterMap() {
         )})}
       </div>
       <div>
-        <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:7}}>EAH&nbsp;<span style={{color:"#34d399"}}>{eOperational}✓</span>{" "}<span style={{color:"#22d3ee"}}>{eAlert}△</span>{" "}<span style={{color:"#fb7185"}}>{eCritical}✕</span></p>
+        <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:7}}>ASSAIN.&nbsp;<span style={{color:"#34d399"}}>{eOperational}✓</span>{" "}<span style={{color:"#22d3ee"}}>{eAlert}△</span>{" "}<span style={{color:"#fb7185"}}>{eCritical}✕</span></p>
         <div style={{maxHeight:150,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
           {renderedEah.map((site:any)=>{
             const c=site.status==="hors_service"?"#fb7185":site.status==="degradé"?"#22d3ee":"#34d399"
@@ -414,7 +414,7 @@ export function DakarWaterMap() {
     if(!ss&&!sa&&!se)return null
     return(<div style={{padding:14,display:"flex",flexDirection:"column",gap:9}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em"}}>{ss?"CAPTEUR":sa?"ALERTE":"SITE EAH"}</span>
+        <span style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em"}}>{ss?"CAPTEUR":sa?"ALERTE":"INSTALLATION"}</span>
         <button onClick={()=>{setSS(null);setSA(null);setSE(null);if(mob)setDrw(false)}} style={{color:"#475569",background:"none",border:"none",cursor:"pointer",fontSize:16}}>✕</button>
       </div>
       {ss&&(()=>{const c=ss.status==="critique"?"#f87171":ss.status==="alerte"?"#fbbf24":SC[ss.kind]||"#34d399";return(

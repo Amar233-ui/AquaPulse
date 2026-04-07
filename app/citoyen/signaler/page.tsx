@@ -83,7 +83,7 @@ const EAH_TYPES = [
   { value: "accessibilite", label: "♿ Problème d'accès" },
   { value: "lavage_mains", label: "🖐 Station de lavage défaillante" },
   { value: "latrine", label: "🚻 Latrine / toilettes non fonctionnelles" },
-  { value: "autre_eah", label: "📋 Autre problème EAH" },
+  { value: "autre_eah", label: "📋 Autre problème d'assainissement" },
 ] as const
 
 const COMMUNITY_CONFIG = {
@@ -212,7 +212,7 @@ function SignalerPageInner() {
     }
 
     if (reportMode === REPORT_MODES.eah && !selectedFacility) {
-      setError("Veuillez choisir le site EAH concerné.")
+      setError("Veuillez choisir l'installation concernée.")
       return
     }
 
@@ -268,7 +268,7 @@ function SignalerPageInner() {
             </p>
             {selectedFacility && (
               <p className="text-xs text-foreground/55 bg-card/50 rounded-lg px-4 py-2">
-                Ce signalement a été ajouté au site EAH <span className="font-semibold text-teal-300">{selectedFacility.name}</span>.
+                Ce signalement a été ajouté à l'installation <span className="font-semibold text-teal-300">{selectedFacility.name}</span>.
               </p>
             )}
             <p className="text-xs text-foreground/50">
@@ -341,8 +341,8 @@ function SignalerPageInner() {
               <a href="/citoyen/points" className="ml-auto text-amber-400 hover:underline shrink-0">Mes points →</a>
             </div>
             <CardDescription>
-              Signalez un problème lié au réseau d&apos;eau. Votre signalement sera transmis
-              aux équipes techniques et analysé par notre système IA.
+              Signalez un problème lié à l&apos;eau (réseau/qualité) ou à l&apos;assainissement (toilettes, hygiène).
+              Votre signalement est transmis aux équipes et pris en compte par l&apos;IA / la confirmation citoyenne.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -372,7 +372,7 @@ function SignalerPageInner() {
                         : "border-border/50 bg-card/50 text-foreground/70 hover:bg-secondary/40"
                     }`}
                   >
-                    <p className="text-sm font-semibold">Site EAH</p>
+                    <p className="text-sm font-semibold">Assainissement</p>
                     <p className="mt-1 text-xs text-foreground/60">Latrine, borne-fontaine, lavage des mains, hygiène</p>
                   </button>
                 </div>
@@ -415,7 +415,7 @@ function SignalerPageInner() {
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   {reportMode === REPORT_MODES.eah
-                    ? "Choisissez le quartier du site EAH concerné pour retrouver la bonne installation."
+                    ? "Choisissez le quartier de l'installation concernée pour la retrouver facilement."
                     : "Sélectionner votre quartier permet à l'IA de corréler votre signalement avec les alertes capteurs de cette zone."}
                 </p>
               </div>
@@ -423,11 +423,11 @@ function SignalerPageInner() {
               {quartier && eahOptions.length > 0 && (
                 <div className="space-y-2">
                   <Label htmlFor="eah-site">
-                    Site EAH concerné <span className="text-foreground/50 text-xs font-normal">{reportMode === REPORT_MODES.eah ? "(obligatoire)" : "(optionnel)"}</span>
+                    Installation concernée <span className="text-foreground/50 text-xs font-normal">{reportMode === REPORT_MODES.eah ? "(obligatoire)" : "(optionnel)"}</span>
                   </Label>
                   <Select value={selectedEahId} onValueChange={setSelectedEahId}>
                     <SelectTrigger id="eah-site">
-                      <SelectValue placeholder="Choisir un site EAH dans ce quartier" />
+                      <SelectValue placeholder="Choisir une installation dans ce quartier" />
                     </SelectTrigger>
                     <SelectContent>
                       {eahOptions.map((facility) => (
@@ -439,8 +439,8 @@ function SignalerPageInner() {
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {reportMode === REPORT_MODES.eah
-                      ? "Votre signalement comptera dans la confirmation communautaire de ce site EAH."
-                      : "Si vous sélectionnez un site EAH, votre signalement comptera dans sa confirmation communautaire."}
+                      ? "Votre signalement comptera dans la confirmation communautaire de cette installation."
+                      : "Si vous sélectionnez une installation, votre signalement comptera dans sa confirmation communautaire."}
                   </p>
                   {selectedFacility && (
                     <div className={`rounded-xl border px-4 py-3 ${selectedFacilityCommunity.box}`}>
@@ -487,7 +487,7 @@ function SignalerPageInner() {
                   id="description"
                   placeholder={
                     reportMode === REPORT_MODES.eah
-                      ? "Décrivez le problème du site EAH: hors service, manque d'eau, problème d'hygiène, accès impossible..."
+                      ? "Décrivez le problème : hors service, manque d'eau, problème d'hygiène, accès impossible..."
                       : "Décrivez le problème en détail — depuis quand, ce que vous observez..."
                   }
                   rows={4}
