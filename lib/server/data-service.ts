@@ -408,9 +408,10 @@ export async function getCitizenQualityData(): Promise<CitizenQualityData> {
 }
 
 /** Extrait le quartier depuis la chaîne location (ex: "Fann - Rue Aimé Césaire" → "Fann") */
+const DAKAR_QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"] as const
+
 function extractQuartierFromLocation(location: string): string | undefined {
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
-  for (const q of QUARTIERS) {
+  for (const q of DAKAR_QUARTIERS) {
     if (location.includes(q)) return q
   }
   return undefined
@@ -453,6 +454,24 @@ export async function createIncident(input: {
     )
 
   const newId = Number(result.lastInsertRowid)
+
+  if (POINTS_USE_KV && input.reporterUserId) {
+    const q = extractQuartierFromLocation(input.location)
+    try {
+      await pointsKvCommand(
+        ["HINCRBY", pointsKey(`stats:user:${input.reporterUserId}`), "signalements", "1"],
+        { write: true },
+      )
+      if (q) {
+        await pointsKvCommand(
+          ["HINCRBY", pointsKey("stats:quartier:signalements"), q, "1"],
+          { write: true },
+        )
+      }
+    } catch (e) {
+      console.error("[Points/KV] Erreur mise à jour stats signalement:", e)
+    }
+  }
 
   // Attribuer les points — dans un try/catch pour ne pas bloquer le signalement
   let points: null | { reason: keyof typeof POINTS_REASONS; points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] } = null
@@ -1987,6 +2006,209 @@ export const POINTS_REASONS: Record<string, { label: string; points: number }> =
   badge_champion:        { label: "Badge Champion débloqué 🎉",    points: 50 },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POINTS: Backend KV (Vercel KV / Upstash Redis) pour la prod serverless.
+// En local on garde SQLite; en prod serverless, SQLite (/tmp) est éphémère →
+// les points/badges retombent à 0 entre requêtes.
+// ─────────────────────────────────────────────────────────────────────────────
+const POINTS_KV_REST_URL =
+  process.env.KV_REST_API_URL?.trim() || process.env.UPSTASH_REDIS_REST_URL?.trim() || ""
+const POINTS_KV_READ_TOKEN =
+  process.env.KV_REST_API_READ_ONLY_TOKEN?.trim() ||
+  process.env.KV_REST_API_TOKEN?.trim() ||
+  process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
+  ""
+const POINTS_KV_WRITE_TOKEN =
+  process.env.KV_REST_API_TOKEN?.trim() || process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || ""
+const POINTS_KV_READABLE = POINTS_KV_REST_URL !== "" && POINTS_KV_READ_TOKEN !== ""
+
+const POINTS_IS_SERVERLESS = process.env.VERCEL === "1" || process.env.VERCEL_ENV !== undefined
+const POINTS_USE_KV =
+  POINTS_KV_READABLE && (POINTS_IS_SERVERLESS || process.env.AQUAPULSE_POINTS_BACKEND === "kv")
+
+const POINTS_KV_PREFIX = (process.env.AQUAPULSE_POINTS_PREFIX?.trim() || "aquapulse:points").replace(/:+$/, "")
+
+function pointsKey(name: string): string {
+  return `${POINTS_KV_PREFIX}:${name}`
+}
+
+function normalizeKvInt(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value)
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isFinite(parsed)) return Math.trunc(parsed)
+  }
+  return fallback
+}
+
+function normalizeKvNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseFloat(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+function pairsToRecord(value: unknown): Record<string, string> {
+  if (!value) return {}
+  if (Array.isArray(value)) {
+    const record: Record<string, string> = {}
+    for (let index = 0; index + 1 < value.length; index += 2) {
+      const field = String(value[index] ?? "")
+      const rawValue = value[index + 1]
+      record[field] = typeof rawValue === "string" ? rawValue : String(rawValue ?? "")
+    }
+    return record
+  }
+
+  if (typeof value === "object") {
+    const record: Record<string, string> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      record[k] = typeof v === "string" ? v : String(v ?? "")
+    }
+    return record
+  }
+
+  return {}
+}
+
+async function pointsKvCommand<T>(command: string[], options?: { write?: boolean }): Promise<T> {
+  if (!POINTS_KV_READABLE) {
+    throw new Error("KV points store is not configured")
+  }
+
+  const token = options?.write ? POINTS_KV_WRITE_TOKEN : POINTS_KV_READ_TOKEN
+  if (!token) {
+    throw new Error("KV points store is read-only. Configure KV_REST_API_TOKEN for write operations.")
+  }
+
+  const response = await fetch(POINTS_KV_REST_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(command),
+    cache: "no-store",
+  })
+
+  if (!response.ok) {
+    throw new Error(`KV points store error (${response.status})`)
+  }
+
+  const payload = (await response.json()) as { result?: T; error?: string }
+  if (payload.error) {
+    throw new Error(payload.error)
+  }
+
+  if (!("result" in payload)) {
+    throw new Error("KV points store returned an invalid response")
+  }
+
+  return payload.result as T
+}
+
+async function awardPointsKv(
+  userId: number,
+  reason: keyof typeof POINTS_REASONS,
+  quartier?: string,
+): Promise<{ points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] }> {
+  const def = POINTS_REASONS[reason]
+  if (!def) return { points: 0, bonusPoints: 0, totalPointsAwarded: 0, newBadges: [] }
+
+  const now = new Date().toISOString()
+  const totalKey = pointsKey(`total:${userId}`)
+  const historyKey = pointsKey(`history:${userId}`)
+  const historySeqKey = pointsKey(`historySeq:${userId}`)
+  const badgesKey = pointsKey(`badges:${userId}`)
+  const quartierKey = pointsKey(`quartier:${userId}`)
+
+  // Total + leaderboards
+  const newTotal = normalizeKvInt(
+    await pointsKvCommand<string | number>(["INCRBY", totalKey, String(def.points)], { write: true }),
+    0,
+  )
+  await pointsKvCommand(["ZINCRBY", pointsKey("leaderboard:global"), String(def.points), String(userId)], { write: true })
+
+  if (quartier) {
+    await pointsKvCommand(["HINCRBY", quartierKey, quartier, String(def.points)], { write: true })
+    await pointsKvCommand(
+      ["ZINCRBY", pointsKey(`leaderboard:quartier:${quartier}`), String(def.points), String(userId)],
+      { write: true },
+    )
+  }
+
+  // History
+  const entryId = normalizeKvInt(await pointsKvCommand<string | number>(["INCR", historySeqKey], { write: true }), 0)
+  const entry = JSON.stringify({
+    id: entryId,
+    points: def.points,
+    reason,
+    quartier: quartier ?? null,
+    awardedAt: now,
+  })
+  await pointsKvCommand(["LPUSH", historyKey, entry], { write: true })
+  await pointsKvCommand(["LTRIM", historyKey, "0", "29"], { write: true })
+
+  // Badges automatiques (seuils) + bonus points
+  const newBadges: BadgeCode[] = []
+  let bonusPoints = 0
+
+  for (const badge of BADGE_DEFINITIONS) {
+    if (badge.threshold === 0) continue // premier_pas géré séparément
+    if (newTotal < badge.threshold) continue
+
+    const added = normalizeKvInt(
+      await pointsKvCommand<string | number>(["HSETNX", badgesKey, badge.code, now], { write: true }),
+      0,
+    )
+    if (added !== 1) continue
+
+    newBadges.push(badge.code)
+
+    const bonusReason = `badge_${badge.code}` as keyof typeof POINTS_REASONS
+    const bonusDef = POINTS_REASONS[bonusReason]
+    if (!bonusDef) continue
+
+    bonusPoints += bonusDef.points
+    await pointsKvCommand(["INCRBY", totalKey, String(bonusDef.points)], { write: true })
+    await pointsKvCommand(
+      ["ZINCRBY", pointsKey("leaderboard:global"), String(bonusDef.points), String(userId)],
+      { write: true },
+    )
+
+    const bonusEntryId = normalizeKvInt(
+      await pointsKvCommand<string | number>(["INCR", historySeqKey], { write: true }),
+      0,
+    )
+    const bonusEntry = JSON.stringify({
+      id: bonusEntryId,
+      points: bonusDef.points,
+      reason: bonusReason,
+      quartier: null,
+      awardedAt: now,
+    })
+    await pointsKvCommand(["LPUSH", historyKey, bonusEntry], { write: true })
+    await pointsKvCommand(["LTRIM", historyKey, "0", "29"], { write: true })
+  }
+
+  return {
+    points: def.points,
+    bonusPoints,
+    totalPointsAwarded: def.points + bonusPoints,
+    newBadges,
+  }
+}
+
+async function kvGetString(key: string): Promise<string | null> {
+  const raw = await pointsKvCommand<string | number | null>(["GET", key])
+  if (raw === null || raw === undefined) return null
+  if (typeof raw === "string") return raw
+  if (typeof raw === "number") return String(raw)
+  return String(raw)
+}
+
 /**
  * Attribue des points à un citoyen pour un incident donné.
  * Calcule et attribue automatiquement les nouveaux badges.
@@ -1997,6 +2219,10 @@ export async function awardPoints(
   incidentId?: number,
   quartier?: string,
 ): Promise<{ points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] }> {
+  if (POINTS_USE_KV) {
+    return awardPointsKv(userId, reason, quartier)
+  }
+
   const db = await getDb()
   const def = POINTS_REASONS[reason]
   if (!def) return { points: 0, bonusPoints: 0, totalPointsAwarded: 0, newBadges: [] }
@@ -2054,6 +2280,47 @@ export async function handleIncidentPointsOnCreate(
   incidentId: number,
   quartier?: string,
 ): Promise<null | { reason: keyof typeof POINTS_REASONS; points: number; bonusPoints: number; totalPointsAwarded: number; newBadges: BadgeCode[] }> {
+  if (POINTS_USE_KV) {
+    const now = new Date().toISOString()
+    const firstKey = pointsKey(`firstSignalement:${userId}`)
+
+    // On lit d'abord, puis on "réserve" après attribution pour éviter de bloquer
+    // un 1er signalement si le KV est temporairement indisponible.
+    const alreadyFirst = await kvGetString(firstKey)
+    if (!alreadyFirst) {
+      const awarded = await awardPoints(userId, "premier_signalement", incidentId, quartier)
+      await pointsKvCommand(["SETNX", firstKey, now], { write: true }).catch(() => undefined)
+
+      const badgesKey = pointsKey(`badges:${userId}`)
+      const premierPasAdded = normalizeKvInt(
+        await pointsKvCommand<string | number>(["HSETNX", badgesKey, "premier_pas", now], { write: true }),
+        0,
+      ) === 1
+
+      const newBadges = [...awarded.newBadges]
+      if (premierPasAdded) {
+        newBadges.unshift("premier_pas")
+      }
+
+      return {
+        reason: "premier_signalement",
+        points: awarded.points,
+        bonusPoints: awarded.bonusPoints,
+        totalPointsAwarded: awarded.totalPointsAwarded,
+        newBadges,
+      }
+    }
+
+    const awarded = await awardPoints(userId, "signalement_soumis", incidentId, quartier)
+    return {
+      reason: "signalement_soumis",
+      points: awarded.points,
+      bonusPoints: awarded.bonusPoints,
+      totalPointsAwarded: awarded.totalPointsAwarded,
+      newBadges: awarded.newBadges,
+    }
+  }
+
   const db = await getDb()
   const now = new Date().toISOString()
 
@@ -2115,6 +2382,17 @@ export async function handleIncidentPointsOnResolve(incidentId: number): Promise
 
   if (!row || !row.reporter_user_id) return
 
+  if (POINTS_USE_KV) {
+    const onceKey = pointsKey(`once:resolve:${incidentId}`)
+    const already = await kvGetString(onceKey)
+    if (already) return
+
+    const quartier = extractQuartierFromLocation(row.location)
+    await awardPoints(row.reporter_user_id, "signalement_resolu", incidentId, quartier)
+    await pointsKvCommand(["SET", onceKey, new Date().toISOString()], { write: true }).catch(() => undefined)
+    return
+  }
+
   // Eviter doublons si un incident est re-ouvert puis re-resolu
   const already = db.prepare(
     "SELECT id FROM citizen_points WHERE incident_id = ? AND reason = 'signalement_resolu' LIMIT 1"
@@ -2145,6 +2423,40 @@ export async function handleIncidentPointsFromAI(
 
   const quartier = extractQuartierFromLocation(row.location)
 
+  if (POINTS_USE_KV) {
+    const onceKey = pointsKey(`once:ai:${incidentId}`)
+    const already = await kvGetString(onceKey)
+    if (already) return
+
+    let reason: keyof typeof POINTS_REASONS | null = null
+    if (isCritical && iaConfidence >= 70) {
+      reason = "signalement_critique"
+    } else if (iaConfidence >= 75) {
+      reason = "signalement_valide_ia"
+    } else if (iaConfidence >= 50) {
+      reason = "signalement_confirme"
+    }
+
+    if (!reason) return
+
+    await awardPoints(row.reporter_user_id, reason, incidentId, quartier)
+    await pointsKvCommand(["SET", onceKey, reason], { write: true }).catch(() => undefined)
+
+    // Stats (leaderboard opérateur)
+    await pointsKvCommand(
+      ["HINCRBY", pointsKey(`stats:user:${row.reporter_user_id}`), "confirmes", "1"],
+      { write: true },
+    ).catch(() => undefined)
+    if (quartier) {
+      await pointsKvCommand(
+        ["HINCRBY", pointsKey("stats:quartier:confirmes"), quartier, "1"],
+        { write: true },
+      ).catch(() => undefined)
+    }
+
+    return
+  }
+
   // Déjà récompensé par l'IA pour cet incident ?
   const alreadyRewarded = db.prepare(
     "SELECT id FROM citizen_points WHERE incident_id = ? AND reason IN ('signalement_confirme','signalement_valide_ia','signalement_critique')"
@@ -2160,8 +2472,78 @@ export async function handleIncidentPointsFromAI(
   }
 }
 
+async function getCitizenPointsProfileKv(userId: number): Promise<CitizenPointsProfile> {
+  const totalPoints = normalizeKvInt(await kvGetString(pointsKey(`total:${userId}`)), 0)
+
+  const badgesPairs = await pointsKvCommand<unknown>(["HGETALL", pointsKey(`badges:${userId}`)]).catch(() => null)
+  const badgeRecord = pairsToRecord(badgesPairs)
+  const badges = Object.entries(badgeRecord)
+    .map(([badgeCode, awardedAt]) => ({ badgeCode: badgeCode as BadgeCode, awardedAt }))
+    .sort((a, b) => a.awardedAt.localeCompare(b.awardedAt))
+
+  const historyRaw = await pointsKvCommand<unknown>(["LRANGE", pointsKey(`history:${userId}`), "0", "29"]).catch(() => [])
+  const historyEntries = (Array.isArray(historyRaw) ? historyRaw : [])
+    .map((raw) => {
+      if (typeof raw !== "string") return null
+      try {
+        const parsed = JSON.parse(raw) as Partial<{
+          id: number | string
+          points: number | string
+          reason: string
+          quartier: string | null
+          awardedAt: string
+        }>
+        if (!parsed || typeof parsed.reason !== "string" || typeof parsed.awardedAt !== "string") return null
+        return {
+          id: normalizeKvInt(parsed.id, 0),
+          points: normalizeKvInt(parsed.points, 0),
+          reason: parsed.reason,
+          quartier: typeof parsed.quartier === "string" ? parsed.quartier : null,
+          awardedAt: parsed.awardedAt,
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter((entry): entry is CitizenPointsProfile["history"][number] => Boolean(entry))
+
+  const quartierPairs = await pointsKvCommand<unknown>(["HGETALL", pointsKey(`quartier:${userId}`)]).catch(() => null)
+  const quartierRecord = pairsToRecord(quartierPairs)
+  const quartierStats = Object.entries(quartierRecord)
+    .map(([quartier, points]) => ({ quartier, points: normalizeKvInt(points, 0) }))
+    .filter((row) => row.points > 0)
+    .sort((a, b) => b.points - a.points)
+
+  const greater = normalizeKvInt(
+    await pointsKvCommand<string | number>([
+      "ZCOUNT",
+      pointsKey("leaderboard:global"),
+      `(${Math.max(0, totalPoints)}`,
+      "+inf",
+    ]).catch(() => 0),
+    0,
+  )
+  const rank = greater + 1
+
+  const allUsers = await listStoredUsers().catch(() => [] as UserRow[])
+  const totalCitizens = allUsers.filter((u) => u.role === "citoyen").length
+
+  return {
+    totalPoints,
+    rank,
+    totalCitizens,
+    badges,
+    history: historyEntries,
+    quartierStats,
+  }
+}
+
 /** Récupère le profil complet de points d'un citoyen */
 export async function getCitizenPointsProfile(userId: number): Promise<CitizenPointsProfile> {
+  if (POINTS_USE_KV) {
+    return getCitizenPointsProfileKv(userId)
+  }
+
   const db = await getDb()
 
   // Note: node:sqlite retourne SUM/COUNT comme BigInt → on caste avec Number()
@@ -2216,8 +2598,121 @@ export async function getCitizenPointsProfile(userId: number): Promise<CitizenPo
   }
 }
 
+function parseZWithScores(value: unknown): Array<{ member: string; score: number }> {
+  if (!Array.isArray(value)) return []
+  const entries: Array<{ member: string; score: number }> = []
+  for (let index = 0; index + 1 < value.length; index += 2) {
+    const member = String(value[index] ?? "").trim()
+    if (!member) continue
+    const score = normalizeKvNumber(value[index + 1], 0)
+    entries.push({ member, score })
+  }
+  return entries
+}
+
+async function getGlobalLeaderboardKv(): Promise<GlobalLeaderboard> {
+  const globalRaw = await pointsKvCommand<unknown>(["ZREVRANGE", pointsKey("leaderboard:global"), "0", "49", "WITHSCORES"]).catch(() => [])
+  const topGlobal = parseZWithScores(globalRaw)
+
+  const citizens: GlobalLeaderboard["citizens"] = []
+  for (let index = 0; index < topGlobal.length; index += 1) {
+    const userId = normalizeKvInt(topGlobal[index]?.member, -1)
+    if (userId <= 0) continue
+
+    const user = await findStoredUserById(userId).catch(() => null)
+    if (!user || user.role !== "citoyen") continue
+
+    const badgesRaw = await pointsKvCommand<unknown>(["HKEYS", pointsKey(`badges:${userId}`)]).catch(() => [])
+    const badges = (Array.isArray(badgesRaw) ? badgesRaw : [])
+      .filter((b): b is string => typeof b === "string" && b.trim() !== "")
+      .map((b) => b as BadgeCode)
+
+    const quartierRecord = pairsToRecord(
+      await pointsKvCommand<unknown>(["HGETALL", pointsKey(`quartier:${userId}`)]).catch(() => null),
+    )
+    let quartierPrincipal: string | null = null
+    let best = 0
+    for (const [q, pts] of Object.entries(quartierRecord)) {
+      const n = normalizeKvInt(pts, 0)
+      if (n > best) {
+        best = n
+        quartierPrincipal = q
+      }
+    }
+
+    const signalements = normalizeKvInt(
+      await pointsKvCommand<string | number | null>(["HGET", pointsKey(`stats:user:${userId}`), "signalements"]).catch(() => 0),
+      0,
+    )
+    const confirmes = normalizeKvInt(
+      await pointsKvCommand<string | number | null>(["HGET", pointsKey(`stats:user:${userId}`), "confirmes"]).catch(() => 0),
+      0,
+    )
+
+    citizens.push({
+      rank: citizens.length + 1,
+      userId,
+      name: user.name,
+      totalPoints: Math.round(topGlobal[index]?.score ?? 0),
+      badges,
+      quartierPrincipal,
+      signalements,
+      confirmes,
+    })
+  }
+
+  const quartierLeaderboards: QuartierLeaderboard[] = []
+
+  for (const q of DAKAR_QUARTIERS) {
+    const topRaw = await pointsKvCommand<unknown>(
+      ["ZREVRANGE", pointsKey(`leaderboard:quartier:${q}`), "0", "4", "WITHSCORES"],
+    ).catch(() => [])
+    const top = parseZWithScores(topRaw)
+
+    const topCitizens: QuartierLeaderboard["topCitizens"] = []
+    for (const entry of top) {
+      const userId = normalizeKvInt(entry.member, -1)
+      if (userId <= 0) continue
+      const user = await findStoredUserById(userId).catch(() => null)
+      if (!user || user.role !== "citoyen") continue
+      const badgesRaw = await pointsKvCommand<unknown>(["HKEYS", pointsKey(`badges:${userId}`)]).catch(() => [])
+      const badges = (Array.isArray(badgesRaw) ? badgesRaw : [])
+        .filter((b): b is string => typeof b === "string" && b.trim() !== "")
+        .map((b) => b as BadgeCode)
+      topCitizens.push({ userId, name: user.name, points: Math.round(entry.score), badges })
+    }
+
+    const totalSignalements = normalizeKvInt(
+      await pointsKvCommand<string | number | null>(["HGET", pointsKey("stats:quartier:signalements"), q]).catch(() => 0),
+      0,
+    )
+    const totalConfirmes = normalizeKvInt(
+      await pointsKvCommand<string | number | null>(["HGET", pointsKey("stats:quartier:confirmes"), q]).catch(() => 0),
+      0,
+    )
+
+    quartierLeaderboards.push({
+      quartier: q,
+      topCitizens,
+      totalSignalements,
+      totalConfirmes,
+      tauxConfirmation: totalSignalements > 0 ? Math.round((totalConfirmes / totalSignalements) * 100) : 0,
+    })
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    citizens,
+    quartierLeaderboards,
+  }
+}
+
 /** Classement global + par quartier pour l'opérateur */
 export async function getGlobalLeaderboard(): Promise<GlobalLeaderboard> {
+  if (POINTS_USE_KV) {
+    return getGlobalLeaderboardKv()
+  }
+
   const db = await getDb()
 
   const citizensRaw = db.prepare(`
@@ -2284,10 +2779,9 @@ export async function getGlobalLeaderboard(): Promise<GlobalLeaderboard> {
   }))
 
   // Classements par quartier
-  const QUARTIERS = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
   const quartierLeaderboards: QuartierLeaderboard[] = []
 
-  for (const q of QUARTIERS) {
+  for (const q of DAKAR_QUARTIERS) {
     const top = db.prepare(`
       SELECT u.id as userId, u.name, COALESCE(SUM(cp.points),0) as points
       FROM users u
