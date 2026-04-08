@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useApiQuery } from "@/hooks/use-api-query"
@@ -89,13 +88,13 @@ function FacilityRow({ facility, quartier }: { facility: EahFacility; quartier: 
 }
 
 export default function CitizenSanitationPage() {
-  const searchParams = useSearchParams()
   const [quartier, setQuartier] = useState<(typeof QUARTIERS)[number]>("Médina")
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     try {
-      const fromQuery = searchParams.get("quartier")
+      const params = new URLSearchParams(window.location.search)
+      const fromQuery = params.get("quartier")
       if (fromQuery && (QUARTIERS as readonly string[]).includes(fromQuery)) {
         setQuartier(fromQuery as (typeof QUARTIERS)[number])
         localStorage.setItem(STORAGE_KEY, fromQuery)
@@ -107,7 +106,7 @@ export default function CitizenSanitationPage() {
         setQuartier(saved as (typeof QUARTIERS)[number])
       }
     } catch {}
-  }, [searchParams])
+  }, [])
 
   const handleQuartierChange = (value: string) => {
     if (!(QUARTIERS as readonly string[]).includes(value)) return
