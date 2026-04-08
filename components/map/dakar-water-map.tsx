@@ -90,6 +90,31 @@ type RenderedEah = {
 
 const ZONES = ["Plateau","Médina","Fann","HLM","Grand Dakar","Parcelles Assainies","Pikine","Guédiawaye"]
 
+const ZONE_ANCHORS: Record<string, { lat: number; lng: number }> = {
+  Plateau: { lat: 14.691, lng: -17.444 },
+  "Médina": { lat: 14.688, lng: -17.458 },
+  Fann: { lat: 14.699, lng: -17.462 },
+  HLM: { lat: 14.708, lng: -17.44 },
+  "Grand Dakar": { lat: 14.715, lng: -17.432 },
+  "Parcelles Assainies": { lat: 14.731, lng: -17.412 },
+  Pikine: { lat: 14.752, lng: -17.387 },
+  "Guédiawaye": { lat: 14.772, lng: -17.398 },
+}
+
+const PARCELLES_SHIFT = {
+  lat: 0.014,
+  lng: -0.028,
+}
+
+function adjustNode<T extends { zone?: string; lat: number; lng: number }>(node: T): T {
+  if (node.zone !== "Parcelles Assainies") return node
+  return {
+    ...node,
+    lat: node.lat + PARCELLES_SHIFT.lat,
+    lng: node.lng + PARCELLES_SHIFT.lng,
+  }
+}
+
 function normalizeText(value: string) {
   return value
     .normalize("NFD")
@@ -139,12 +164,65 @@ function findEahPoint(zone: string, usedIds: Set<string>) {
   return INTER_NODES.find((node: any) => !usedIds.has(node.id)) ?? INTER_NODES[0]
 }
 
+function hashString(value: string) {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash)
+}
+
+function routeWaypoints(
+  from: { lat: number; lng: number; zone?: string },
+  to: { lat: number; lng: number; zone?: string },
+  seed = "",
+) {
+  const dx = to.lng - from.lng
+  const dy = to.lat - from.lat
+  const distance = Math.hypot(dx, dy) || 1
+  const dirLat = dy / distance
+  const dirLng = dx / distance
+  const perpLat = -dirLng
+  const perpLng = dirLat
+  const sameZone = from.zone === to.zone
+  const isLargeHub = ["Grand Dakar", "Parcelles Assainies"].includes(from.zone ?? "") || ["Grand Dakar", "Parcelles Assainies"].includes(to.zone ?? "")
+  const baseCurve = sameZone ? 0.0014 : 0.0026
+  const hubCurve = isLargeHub ? baseCurve * 1.9 : baseCurve
+  const seedHash = hashString(`${from.zone ?? ""}:${to.zone ?? ""}:${seed}`)
+  const wobble = ((seedHash % 7) - 3) * 0.00018
+  const sway = hubCurve + wobble
+  const inwardPull = isLargeHub ? 0.0009 : 0.0004
+
+  const p1: [number, number] = [
+    from.lat + dirLat * distance * 0.24 + perpLat * sway * 0.45 + inwardPull,
+    from.lng + dirLng * distance * 0.24 + perpLng * sway * 0.45 - inwardPull,
+  ]
+
+  const p2: [number, number] = [
+    (from.lat + to.lat) / 2 + perpLat * sway,
+    (from.lng + to.lng) / 2 + perpLng * sway,
+  ]
+
+  const p3: [number, number] = [
+    to.lat - dirLat * distance * 0.24 + perpLat * sway * 0.45 - inwardPull,
+    to.lng - dirLng * distance * 0.24 + perpLng * sway * 0.45 + inwardPull,
+  ]
+
+  return [
+    [from.lat, from.lng] as [number, number],
+    p1,
+    p2,
+    p3,
+    [to.lat, to.lng] as [number, number],
+  ]
+}
+
 export function DakarWaterMap() {
   const mapDiv=useRef<HTMLDivElement>(null),mRef=useRef<any>(null),L=useRef<any>(null)
   const sensorLayerRef = useRef<any>(null), alertLayerRef = useRef<any>(null), eahLayerRef = useRef<any>(null)
   const [ready,setReady]=useState(false),[clock,setClock]=useState("")
   const [ss,setSS]=useState<any>(null),[sa,setSA]=useState<any>(null),[se,setSE]=useState<any>(null)
-  const [open,setOpen]=useState(true),[mob,setMob]=useState(false),[drw,setDrw]=useState(false)
+  const [open,setOpen]=useState(true),[mob,setMob]=useState(false)
   const [liveSensors, setLiveSensors] = useState<ApiSensor[] | null>(null)
   const [liveAlerts, setLiveAlerts] = useState<ApiAlert[] | null>(null)
   const [liveEah, setLiveEah] = useState<ApiEah[] | null>(null)
@@ -189,14 +267,19 @@ export function DakarWaterMap() {
 
   const renderedSensors = useMemo<RenderedSensor[]>(() => {
     if (!liveSensors?.length) {
-      return SENSORS.map((sensor: any) => ({
-        ...sensor,
-        value: String(sensor.value),
-        location: sensor.zone,
-        battery: 100,
-        signal: 100,
-        lastUpdate: "démo",
-      }))
+      return SENSORS.map((sensor: any) => {
+        const adjusted = adjustNode(sensor)
+        return {
+          ...sensor,
+          lat: adjusted.lat,
+          lng: adjusted.lng,
+          value: String(sensor.value),
+          location: sensor.zone,
+          battery: 100,
+          signal: 100,
+          lastUpdate: "démo",
+        }
+      })
     }
 
     const usedIds = new Set<string>()
@@ -204,14 +287,15 @@ export function DakarWaterMap() {
       const zone = extractZone(sensor.location || sensor.name || "")
       const kind = sensorKindFromType(sensor.type)
       const point = findTemplatePoint(zone, kind, usedIds)
+      const adjusted = adjustNode(point)
       usedIds.add(point.sensor_id)
       return {
         sensor_id: sensor.id,
         node_id: point.node_id,
         kind,
         name: sensor.name || `${sensor.type} ${sensor.id}`,
-        lat: point.lat,
-        lng: point.lng,
+        lat: adjusted.lat,
+        lng: adjusted.lng,
         zone,
         value: `${sensor.signal}`,
         unit: "% sig",
@@ -226,10 +310,16 @@ export function DakarWaterMap() {
 
   const renderedAlerts = useMemo<RenderedAlert[]>(() => {
     if (!liveAlerts?.length) {
-      return ALERTS.map((alert: any) => ({
-        ...alert,
-        severity: alert.severity as RenderedAlert["severity"],
-      }))
+      return ALERTS.map((alert: any) => {
+        const zone = extractZone(alert.location)
+        const adjusted = adjustNode({ lat: alert.lat, lng: alert.lng, zone })
+        return {
+          ...alert,
+          severity: alert.severity as RenderedAlert["severity"],
+          lat: adjusted.lat,
+          lng: adjusted.lng,
+        }
+      })
     }
 
     const usedIds = new Set<string>()
@@ -237,6 +327,7 @@ export function DakarWaterMap() {
       const zone = extractZone(alert.location)
       const kind = alert.classification === "Fuite" ? "acoustic" : alert.classification === "Fraude" ? "flow" : alert.classification === "Contamination" ? "quality" : "pressure"
       const point = findTemplatePoint(zone, kind, usedIds)
+      const adjusted = adjustNode(point)
       usedIds.add(point.sensor_id)
       const probability = Number.parseInt(String(alert.probability).replace("%", ""), 10)
       return {
@@ -245,8 +336,8 @@ export function DakarWaterMap() {
         location: alert.location,
         severity: alertSeverityFromApi(alert.severity),
         probability: Number.isNaN(probability) ? 60 : probability / 100,
-        lat: point.lat,
-        lng: point.lng,
+        lat: adjusted.lat,
+        lng: adjusted.lng,
         date: alert.date,
         status: alert.status,
         description: alert.description ?? `Alerte ${alert.type} détectée sur ${alert.location}.`,
@@ -262,6 +353,7 @@ export function DakarWaterMap() {
     return liveEah.map((facility) => {
       const zone = extractZone(facility.quartier || facility.address || facility.name)
       const point = findEahPoint(zone, usedIds)
+      const adjusted = adjustNode(point)
       usedIds.add(point.id)
       return {
         facility_id: facility.id,
@@ -271,8 +363,8 @@ export function DakarWaterMap() {
         address: facility.address,
         status: facility.status,
         notes: facility.notes ?? "Aucune note terrain.",
-        lat: point.lat,
-        lng: point.lng,
+        lat: adjusted.lat,
+        lng: adjusted.lng,
         priorityLabel:
           facility.status === "hors_service"
             ? "Intervention urgente"
@@ -283,7 +375,7 @@ export function DakarWaterMap() {
     })
   }, [liveEah])
 
-  useEffect(()=>{const c=()=>{const m=window.innerWidth<768;setMob(m);if(m)setOpen(false)};c();window.addEventListener("resize",c);return()=>window.removeEventListener("resize",c)},[])
+  useEffect(()=>{const c=()=>{const m=window.innerWidth<768;setMob(m)};c();window.addEventListener("resize",c);return()=>window.removeEventListener("resize",c)},[])
   useEffect(()=>{const t=setInterval(()=>setClock(new Date().toLocaleTimeString("fr-FR")),1000);return()=>clearInterval(t)},[])
   useEffect(()=>{if(mRef.current)setTimeout(()=>mRef.current.invalidateSize(),300)},[open])
   useEffect(()=>{
@@ -302,17 +394,70 @@ export function DakarWaterMap() {
     if(!ready)return
     const Lf=L.current,map=mRef.current;if(!Lf||!map)return
     const nm:Record<string,any>={}
-    NODES.forEach((n:any)=>nm[n.id]=n);INTER_NODES.forEach((n:any)=>nm[n.id]=n)
+    NODES.forEach((n:any)=>nm[n.id]=adjustNode(n));INTER_NODES.forEach((n:any)=>nm[n.id]=adjustNode(n))
     PIPES.forEach((p:any)=>{
       const f=nm[p.from],t=nm[p.to];if(!f||!t)return
-      const c=p.risk==="high"?"#f87171":p.risk==="medium"?"#fbbf24":"#22d3ee"
-      Lf.polyline([[f.lat,f.lng],[t.lat,t.lng]],{color:c,weight:Math.max(1.2,(p.diameter_mm||150)/140),opacity:0.65,dashArray:p.risk==="high"?"6 4":p.risk==="medium"?"10 4":null}).addTo(map)
-        .bindTooltip(`<div style="background:#0f172a;border:1px solid #22d3ee33;color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:11px;font-family:monospace"><b style="color:#22d3ee">${p.id}</b><br/>${p.from}→${p.to} ∅${p.diameter_mm}mm${p.age_years?` ⚠${p.age_years}ans`:""}</div>`,{sticky:true,opacity:1})
+      // Couleur & opacité par niveau de risque
+      const baseColor = p.risk==="high"?"#f87171":p.risk==="medium"?"#fbbf24":"#22d3ee"
+      const trackOpacity = p.risk==="high"?0.55:p.risk==="medium"?0.48:0.38
+      const flowOpacity  = p.risk==="high"?0.90:p.risk==="medium"?0.82:0.75
+      // Épaisseur proportionnelle au diamètre
+      const baseW = Math.max(1.4,(p.diameter_mm||150)/130)
+      const flowW = Math.max(0.8, baseW * 0.55)
+      // Vitesse d'animation : rapide sur grosses artères, lent sur secondaires
+      const flowClass = p.diameter_mm>=300?"aqwFast":p.diameter_mm>=150?"aqwMid":"aqwSlow"
+      // dashArray flow : tirets courts sur risque élevé (flux réduit), longs sur normal
+      const flowDash = p.risk==="high"?"4 20":p.risk==="medium"?"7 17":"10 14"
+      const tooltip = `<div style="background:#0f172a;border:1px solid ${baseColor}44;color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:11px;font-family:monospace"><b style="color:${baseColor}">${p.id}</b><br/>${p.from}→${p.to} ∅${p.diameter_mm}mm · ${p.material}${p.age_years?` · ⚠ ${p.age_years} ans`:""}</div>`
+      const waypoints = routeWaypoints(f, t, p.id)
+      // COUCHE 1 — tracé de base (couleur pleine, indique le risque)
+      Lf.polyline(waypoints,{
+        color:baseColor, weight:baseW, opacity:trackOpacity,
+        lineCap: "round", lineJoin: "round",
+      }).addTo(map).bindTooltip(tooltip,{sticky:true,opacity:1})
+      // COUCHE 2 — flux animé (tirets qui défilent = eau qui coule)
+      Lf.polyline(waypoints,{
+        color:baseColor, weight:flowW, opacity:flowOpacity,
+        dashArray:"4 12", className:"aqp-flow-link",
+        lineCap: "round", lineJoin: "round",
+      }).addTo(map)
     })
-    NODES.forEach((node:any)=>{
+    NODES.map(adjustNode).forEach((node:any)=>{
       const nc=node.type==="reservoir"?"#38bdf8":node.type==="pump"?"#fbbf24":node.type==="valve"?"#a78bfa":"#64748b"
       Lf.marker([node.lat,node.lng],{icon:Lf.divIcon({html:`<div style="width:28px;height:28px;background:${nc}22;border:2px solid ${nc};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:${nc};box-shadow:0 0 8px ${nc}55">${SYM[node.type]||"●"}</div>`,className:"",iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)
         .bindTooltip(`<div style="background:#0f172a;border:1px solid ${nc}44;color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:11px;font-family:monospace"><b style="color:${nc}">${node.name}</b><br/>${node.zone}</div>`,{sticky:true,opacity:1})
+    })
+
+    ZONES.forEach((zoneName) => {
+      let anchor = ZONE_ANCHORS[zoneName]
+      if (zoneName === "Parcelles Assainies") {
+        anchor = {
+          lat: anchor.lat + 0.014,
+          lng: anchor.lng - 0.028,
+        }
+      }
+      if (!anchor) return
+
+      const color = "#22d3ee" // Default generic tech blue for operator zones
+      Lf.circle([anchor.lat, anchor.lng], {
+        radius: 640,
+        color: `${color}AA`,
+        weight: 1,
+        fillColor: `${color}`,
+        fillOpacity: 0.04,
+        opacity: 0.45,
+        interactive: false,
+      }).addTo(map)
+
+      Lf.marker([anchor.lat, anchor.lng], {
+        icon: Lf.divIcon({
+          html: `<div style="background:rgba(2,6,23,.78);border:1px solid ${color}55;color:#f3f4f6;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:700;box-shadow:0 0 10px rgba(0,0,0,.22);white-space:nowrap">${zoneName}</div>`,
+          className: "",
+          iconSize: [100, 24],
+          iconAnchor: [45, 12],
+        }),
+        interactive: false,
+      }).addTo(map)
     })
       sensorLayerRef.current = Lf.layerGroup().addTo(map)
       alertLayerRef.current = Lf.layerGroup().addTo(map)
@@ -330,20 +475,20 @@ export function DakarWaterMap() {
       const c=s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":SC[s.kind]||"#34d399"
       const pulse=s.status!=="normal"
       Lf.marker([s.lat,s.lng],{icon:Lf.divIcon({html:`<div style="position:relative;width:18px;height:18px">${pulse?`<div style="position:absolute;inset:-5px;border-radius:50%;background:${c}33;animation:sP 1.8s ease-out infinite"></div><style>@keyframes sP{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`:""}<div style="position:relative;width:18px;height:18px;border-radius:50%;background:${c}33;border:2px solid ${c};box-shadow:0 0 6px ${c}88"></div></div>`,className:"",iconSize:[18,18],iconAnchor:[9,9]})}).addTo(sensorLayer)
-        .on("click",()=>{setSS(s);setSA(null);setSE(null);if(window.innerWidth<768)setDrw(true)})
+        .on("click",()=>{setSS(s);setSA(null);setSE(null);if(window.innerWidth<768)setOpen(true)})
         .bindTooltip(`<div style="background:#0f172a;border:1px solid ${c}44;color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:11px;font-family:monospace"><b style="color:${c}">${s.name}</b><br/>${s.location}<br/>Signal ${s.value}${s.unit}</div>`,{sticky:true,opacity:1})
     })
     renderedAlerts.forEach((a:any)=>{
       const c=SEV[a.severity]
       Lf.circle([a.lat,a.lng],{radius:170,color:c,fillColor:c,fillOpacity:0.08,weight:1.5,dashArray:"4 4"}).addTo(alertLayer)
       Lf.marker([a.lat,a.lng],{icon:Lf.divIcon({html:`<div style="width:28px;height:28px;border-radius:50%;border:2px solid ${c};background:${c}22;box-shadow:0 0 12px ${c}88;display:flex;align-items:center;justify-content:center;font-size:13px">⚠</div>`,className:"",iconSize:[28,28],iconAnchor:[14,14],zIndexOffset:1000})}).addTo(alertLayer)
-        .on("click",()=>{setSA(a);setSS(null);setSE(null);if(window.innerWidth<768)setDrw(true)})
+        .on("click",()=>{setSA(a);setSS(null);setSE(null);if(window.innerWidth<768)setOpen(true)})
     })
     renderedEah.forEach((site:any)=>{
       const c=site.status==="hors_service"?"#fb7185":site.status==="degradé"?"#22d3ee":"#34d399"
       Lf.circle([site.lat,site.lng],{radius:120,color:c,fillColor:c,fillOpacity:0.06,weight:1}).addTo(eahLayer)
       Lf.marker([site.lat,site.lng],{icon:Lf.divIcon({html:`<div style="width:24px;height:24px;border-radius:8px;border:2px solid ${c};background:${c}20;box-shadow:0 0 10px ${c}66;display:flex;align-items:center;justify-content:center;font-size:12px">🚰</div>`,className:"",iconSize:[24,24],iconAnchor:[12,12]})}).addTo(eahLayer)
-        .on("click",()=>{setSE(site);setSS(null);setSA(null);if(window.innerWidth<768)setDrw(true)})
+        .on("click",()=>{setSE(site);setSS(null);setSA(null);if(window.innerWidth<768)setOpen(true)})
         .bindTooltip(`<div style="background:#0f172a;border:1px solid ${c}44;color:#e2e8f0;padding:5px 9px;border-radius:6px;font-size:11px;font-family:monospace"><b style="color:${c}">${site.name}</b><br/>${site.quartier} · ${site.status}</div>`,{sticky:true,opacity:1})
     })
   },[ready, renderedSensors, renderedAlerts, renderedEah])
@@ -371,7 +516,7 @@ export function DakarWaterMap() {
         <div style={{maxHeight:175,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
           {renderedSensors.filter((s:any)=>["pressure","flow","acoustic"].includes(s.kind)).map((s:any)=>{
             const c=s.status==="critique"?"#f87171":s.status==="alerte"?"#fbbf24":"#34d399"
-            return(<div key={s.sensor_id} onClick={()=>{setSS(s);setSA(null);if(mob)setDrw(true);mRef.current?.setView([s.lat,s.lng],16)}}
+            return(<div key={s.sensor_id} onClick={()=>{setSS(s);setSA(null);if(mob)setOpen(true);mRef.current?.setView([s.lat,s.lng],16)}}
               style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 7px",borderRadius:5,cursor:"pointer",background:ss?.sensor_id===s.sensor_id?`${c}18`:"transparent",transition:"all .15s"}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:6,height:6,borderRadius:"50%",background:c}}/><span style={{color:"#94a3b8",fontSize:10,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span></div>
               <span style={{color:c,fontSize:10,fontWeight:700}}>{s.value}{s.unit}</span>
@@ -382,7 +527,7 @@ export function DakarWaterMap() {
       <div>
         <p style={{color:"#f87171",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:7}}>ALERTES&nbsp;<span style={{background:"#f8717133",borderRadius:3,padding:"1px 5px"}}>{renderedAlerts.length}</span></p>
         {renderedAlerts.map((a:any)=>{const c=SEV[a.severity];return(
-          <div key={a.alert_id} onClick={()=>{setSA(a);setSS(null);setSE(null);if(mob)setDrw(true);mRef.current?.setView([a.lat,a.lng],15)}}
+          <div key={a.alert_id} onClick={()=>{setSA(a);setSS(null);setSE(null);if(mob)setOpen(true);mRef.current?.setView([a.lat,a.lng],15)}}
             style={{padding:"6px 8px",borderRadius:6,cursor:"pointer",marginBottom:4,background:`${c}0d`,borderLeft:`3px solid ${c}`,borderTop:`1px solid ${c}18`,borderRight:`1px solid ${c}18`,borderBottom:`1px solid ${c}18`}}>
             <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:c,fontSize:11,fontWeight:700}}>{a.type}</span><span style={{color:c,fontSize:10}}>{(a.probability*100).toFixed(0)}%</span></div>
             <div style={{color:"#64748b",fontSize:10,marginTop:2}}>{a.location}</div>
@@ -395,7 +540,7 @@ export function DakarWaterMap() {
           {renderedEah.map((site:any)=>{
             const c=site.status==="hors_service"?"#fb7185":site.status==="degradé"?"#22d3ee":"#34d399"
             return(
-              <div key={site.facility_id} onClick={()=>{setSE(site);setSS(null);setSA(null);if(mob)setDrw(true);mRef.current?.setView([site.lat,site.lng],15)}}
+              <div key={site.facility_id} onClick={()=>{setSE(site);setSS(null);setSA(null);if(mob)setOpen(true);mRef.current?.setView([site.lat,site.lng],15)}}
                 style={{padding:"6px 8px",borderRadius:6,cursor:"pointer",background:se?.facility_id===site.facility_id?`${c}18`:"transparent",border:`1px solid ${c}18`}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                   <span style={{color:"#e2e8f0",fontSize:10,fontWeight:700,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{site.name}</span>
@@ -415,7 +560,7 @@ export function DakarWaterMap() {
     return(<div style={{padding:14,display:"flex",flexDirection:"column",gap:9}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em"}}>{ss?"CAPTEUR":sa?"ALERTE":"INSTALLATION"}</span>
-        <button onClick={()=>{setSS(null);setSA(null);setSE(null);if(mob)setDrw(false)}} style={{color:"#475569",background:"none",border:"none",cursor:"pointer",fontSize:16}}>✕</button>
+        <button onClick={()=>{setSS(null);setSA(null);setSE(null);if(mob)setOpen(false)}} style={{color:"#475569",background:"none",border:"none",cursor:"pointer",fontSize:16}}>✕</button>
       </div>
       {ss&&(()=>{const c=ss.status==="critique"?"#f87171":ss.status==="alerte"?"#fbbf24":SC[ss.kind]||"#34d399";return(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -471,29 +616,78 @@ export function DakarWaterMap() {
 
   return(
     <div style={{fontFamily:"monospace",position:"relative",width:"100%",height:"100%",display:"flex"}}>
-      <style>{`.aqsb::-webkit-scrollbar{width:3px}.aqsb::-webkit-scrollbar-thumb{background:rgba(34,211,238,.25);border-radius:2px}.leaflet-tooltip{background:transparent!important;border:none!important;box-shadow:none!important}.leaflet-tooltip::before{display:none!important}`}</style>
-      {!mob&&(<div style={{width:open?W:0,minWidth:open?W:0,height:"100%",overflow:"hidden",transition:"width .25s,min-width .25s",background:"#020817",borderRight:"1px solid rgba(34,211,238,.22)",flexShrink:0}}>
-        <div className="aqsb" style={{width:W,height:"100%",overflowY:"auto",opacity:open?1:0,transition:"opacity .2s"}}><SB/></div>
-      </div>)}
+      <style>{`
+  .aqsb::-webkit-scrollbar{width:3px}
+  .aqsb::-webkit-scrollbar-thumb{background:rgba(34,211,238,.25);border-radius:2px}
+  .leaflet-tooltip{background:transparent!important;border:none!important;box-shadow:none!important}
+  .leaflet-tooltip::before{display:none!important}
+  /* ── ANIMATION CIRCULATION EAU ── */
+  @keyframes aqwFlowAnim{ from{stroke-dashoffset:0} to{stroke-dashoffset:-48} }
+  .aqwFast  path{ animation:aqwFlowAnim 1.1s linear infinite; stroke-linecap: round; stroke-linejoin: round; }
+  .aqwMid   path{ animation:aqwFlowAnim 2.2s linear infinite; stroke-linecap: round; stroke-linejoin: round; }
+  .aqwSlow  path{ animation:aqwFlowAnim 4.0s linear infinite; stroke-linecap: round; stroke-linejoin: round; }
+  .aqp-flow-link{
+    animation: aqpFlowDash 7s linear infinite;
+  }
+  .aqp-flow-link path{
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @keyframes aqpFlowDash{
+    from{stroke-dashoffset: 0;}
+    to{stroke-dashoffset: -180;}
+  }
+`}</style>
+      {mob && open && <div onClick={() => setOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 999, background: "rgba(0,0,0,.55)", backdropFilter: "blur(2px)" }} />}
+      <div style={{
+          width: open ? (mob ? 280 : W) : 0,
+          minWidth: open ? (mob ? 0 : W) : 0,
+          height: "100%",
+          overflow: "hidden",
+          transition: "all .25s ease-in-out",
+          background: "#020817",
+          borderRight: "1px solid rgba(34,211,238,.22)",
+          flexShrink: 0,
+          position: mob ? "absolute" : "relative",
+          zIndex: mob ? 1000 : 1,
+          left: 0,
+          top: 0
+      }}>
+        <div className="aqsb" style={{ width: mob ? 280 : W, height: "100%", overflowY: "auto", opacity: open ? 1 : 0, transition: "opacity .2s" }}>
+          {mob && (ss || sa || se) ? <DP /> : <SB />}
+        </div>
+      </div>
       <div style={{flex:1,position:"relative",minWidth:0}}>
-        {!mob&&(<button onClick={()=>setOpen(o=>!o)} style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",zIndex:1000,width:22,height:54,background:"#020817",border:"1px solid rgba(34,211,238,.35)",borderLeft:"none",borderRadius:"0 8px 8px 0",cursor:"pointer",color:"#22d3ee",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"3px 0 12px rgba(0,0,0,.5)"}}>{open?"‹":"›"}</button>)}
-        {mob&&!drw&&(<button onClick={()=>setDrw(true)} style={{position:"absolute",bottom:88,left:12,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.4)",borderRadius:12,padding:"9px 14px",color:"#22d3ee",fontSize:11,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(0,0,0,.6)"}}>☰ Réseau</button>)}
+        <button onClick={()=>setOpen(o=>!o)} style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",zIndex:998,width:22,height:54,background:"#020817",border:"1px solid rgba(34,211,238,.35)",borderLeft:"none",borderRadius:"0 8px 8px 0",cursor:"pointer",color:"#22d3ee",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"3px 0 12px rgba(0,0,0,.5)"}}>{open?"‹":"›"}</button>
+        {mob && !open && (<button onClick={()=>setOpen(true)} style={{position:"absolute",bottom:88,left:12,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.4)",borderRadius:12,padding:"9px 14px",color:"#22d3ee",fontSize:11,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(0,0,0,.6)"}}>☰ Réseau</button>)}
         <div ref={mapDiv} style={{width:"100%",height:"100%"}}/>
         <div style={{position:"absolute",bottom:40,right:12,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.22)",borderRadius:10,padding:"10px 14px"}}>
           <p style={{color:"#22d3ee",fontSize:9,fontWeight:700,letterSpacing:"0.15em",marginBottom:5}}>LÉGENDE</p>
-          {[{c:"#38bdf8",l:"Réservoir"},{c:"#fbbf24",l:"Pompe"},{c:"#a78bfa",l:"Vanne"},{c:"#f87171",l:"Conduite risque"},{c:"#22d3ee",l:"Réseau normal"}].map(x=>(
-            <div key={x.l} style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}><div style={{width:7,height:7,borderRadius:2,background:x.c}}/><span style={{color:"#64748b",fontSize:10}}>{x.l}</span></div>
-          ))}
+          {[
+              {c:"#22d3ee",l:"Flux eau — artère principale",dash:"10 14"},
+              {c:"#fbbf24",l:"Flux eau — risque moyen",dash:"7 17"},
+              {c:"#f87171",l:"Flux eau — risque élevé",dash:"4 20"},
+              {c:"#38bdf8",l:"Réservoir ▣",dash:null},
+              {c:"#fbbf24",l:"Pompe ⚙",dash:null},
+              {c:"#a78bfa",l:"Vanne ◈",dash:null},
+              {c:"#f87171",l:"Zone d'alerte ⚠",dash:null},
+            ].map(x=>(
+              <div key={x.l} style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
+                {x.dash
+                  ? <svg width="22" height="4" style={{flexShrink:0}}>
+                      <line x1="0" y1="2" x2="22" y2="2"
+                        stroke={x.c} strokeWidth="2"
+                        strokeDasharray={x.dash} strokeLinecap="round"/>
+                    </svg>
+                  : <div style={{width:8,height:8,borderRadius:2,background:x.c,flexShrink:0}}/>
+                }
+                <span style={{color:"#64748b",fontSize:10}}>{x.l}</span>
+              </div>
+            ))}
         </div>
         {!mob&&(ss||sa||se)&&(<div style={{position:"absolute",right:12,top:12,width:225,zIndex:1000,background:"#020817",border:"1px solid rgba(34,211,238,.22)",borderRadius:10,maxHeight:"calc(100%-24px)",overflowY:"auto"}}><DP/></div>)}
       </div>
-      {mob&&(<>
-        {drw&&<div onClick={()=>setDrw(false)} style={{position:"absolute",inset:0,zIndex:29,background:"rgba(0,0,0,.55)",backdropFilter:"blur(2px)"}}/>}
-        <div style={{position:"absolute",bottom:0,left:0,right:0,zIndex:30,background:"#020817",borderRadius:"18px 18px 0 0",border:"1px solid rgba(34,211,238,.22)",borderBottom:"none",boxShadow:"0 -8px 40px rgba(0,0,0,.6)",transform:drw?"translateY(0)":"translateY(100%)",transition:"transform .3s cubic-bezier(.32,.72,0,1)",maxHeight:"72vh",display:"flex",flexDirection:"column"}}>
-          <div style={{display:"flex",justifyContent:"center",padding:"11px 0 4px",cursor:"pointer"}} onClick={()=>setDrw(false)}><div style={{width:34,height:4,borderRadius:2,background:"rgba(34,211,238,.3)"}}/></div>
-          <div className="aqsb" style={{flex:1,overflowY:"auto"}}>{(ss||sa||se)?<DP/> :<SB/>}</div>
-        </div>
-      </>)}
+      
     </div>
   )
 }
